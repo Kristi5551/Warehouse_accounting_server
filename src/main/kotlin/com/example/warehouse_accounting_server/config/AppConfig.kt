@@ -15,7 +15,7 @@ data class JwtSettings(
     val issuer: String,
     val audience: String,
     val realm: String,
-    val accessTokenTtlSeconds: Long,
+    val expirationMillis: Long,
 )
 
 data class AppConfig(
@@ -43,7 +43,7 @@ data class AppConfig(
                     issuer = jwt.property("issuer").getString(),
                     audience = jwt.property("audience").getString(),
                     realm = jwt.property("realm").getString(),
-                    accessTokenTtlSeconds = jwt.property("accessTokenTtlSeconds").getString().toLong(),
+                    expirationMillis = jwt.property("expirationMillis").getString().toLong(),
                 ),
             )
         }
