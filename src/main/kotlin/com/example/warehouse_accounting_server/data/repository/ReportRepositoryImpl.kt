@@ -69,18 +69,15 @@ class ReportRepositoryImpl : ReportRepository {
             .innerJoin(StockOperationItemsTable, { StockOperationsTable.id }, { StockOperationItemsTable.operationId })
             .innerJoin(ProductsTable, { StockOperationItemsTable.productId }, { ProductsTable.id })
         join.selectAll().where {
-            val parts = buildList {
-                operationType?.let { add(StockOperationsTable.operationType eq it.name) }
-                productId?.let { add(StockOperationItemsTable.productId eq it) }
-                from?.let { add(StockOperationsTable.createdAt greaterEq it) }
-                to?.let { add(StockOperationsTable.createdAt lessEq it) }
-                userId?.let { add(StockOperationsTable.createdBy eq it) }
-            }
-            when {
-                parts.isEmpty() -> Op.TRUE
-                parts.size == 1 -> parts.first()
-                else -> parts.reduce { acc, op -> acc and op }
-            }
+            val parts = listOfNotNull(
+                operationType?.let { StockOperationsTable.operationType eq it.name },
+                productId?.let { StockOperationItemsTable.productId eq it },
+                from?.let { StockOperationsTable.createdAt greaterEq it },
+                to?.let { StockOperationsTable.createdAt lessEq it },
+                userId?.let { StockOperationsTable.createdBy eq it },
+            )
+            if (parts.isEmpty()) Op.TRUE
+            else parts.reduce { acc, op -> acc and op }
         }.map { row ->
             OperationReport(
                 operationId = row[StockOperationsTable.id].value,

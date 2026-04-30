@@ -151,7 +151,6 @@ class StockService(
 
     fun inventory(request: CreateInventoryRequest, userId: Long) {
         val qty = stockOperationValidator.parseMoney(request.actualQuantity, "actualQuantity")
-        if (qty < BigDecimal.ZERO) throw ApiException(HttpStatusCode.BadRequest, "actualQuantity invalid")
         stockRepository.createInventoryAdjustment(
             warehouseId = request.warehouseId,
             productId = request.productId,
