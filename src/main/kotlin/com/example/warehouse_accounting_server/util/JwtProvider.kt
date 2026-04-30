@@ -4,7 +4,7 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.JWTVerifier
 import com.auth0.jwt.algorithms.Algorithm
 import com.example.warehouse_accounting_server.config.JwtSettings
-import com.example.warehouse_accounting_server.domain.model.UserRole
+import com.example.warehouse_accounting_server.domain.model.User
 import java.util.Date
 
 class JwtProvider(
@@ -18,14 +18,15 @@ class JwtProvider(
             .withIssuer(settings.issuer)
             .build()
 
-    fun createAccessToken(userId: Long, role: UserRole): String {
+    fun createAccessToken(user: User): String {
         val now = System.currentTimeMillis()
-        val expiry = now + settings.accessTokenTtlSeconds * 1000
+        val expiry = now + settings.expirationMillis
         return JWT.create()
             .withAudience(settings.audience)
             .withIssuer(settings.issuer)
-            .withClaim(CLAIM_USER_ID, userId)
-            .withClaim(CLAIM_ROLE, role.name)
+            .withClaim(CLAIM_USER_ID, user.id)
+            .withClaim(CLAIM_EMAIL, user.email)
+            .withClaim(CLAIM_ROLE, user.role.name)
             .withIssuedAt(Date(now))
             .withExpiresAt(Date(expiry))
             .sign(algorithm)
@@ -33,6 +34,7 @@ class JwtProvider(
 
     companion object {
         const val CLAIM_USER_ID = "userId"
+        const val CLAIM_EMAIL = "email"
         const val CLAIM_ROLE = "role"
     }
 }

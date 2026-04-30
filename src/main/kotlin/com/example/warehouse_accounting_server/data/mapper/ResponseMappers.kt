@@ -18,8 +18,8 @@ fun User.toResponse(): UserResponse =
         id = id,
         email = email,
         fullName = fullName,
-        role = role.name,
-        status = status.name,
+        role = role,
+        status = status,
     )
 
 fun Category.toResponse(): CategoryResponse =

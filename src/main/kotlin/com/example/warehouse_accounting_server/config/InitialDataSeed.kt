@@ -19,7 +19,7 @@ object InitialDataSeed {
         userRepository.create(
             email = ADMIN_EMAIL,
             passwordHash = passwordHasher.hash(ADMIN_PASSWORD),
-            fullName = "Системный администратор",
+            fullName = "Администратор системы",
             role = UserRole.ADMIN,
             status = UserStatus.ACTIVE,
             now = dateTime.now(),

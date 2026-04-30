@@ -1,19 +1,20 @@
 package com.example.warehouse_accounting_server.domain.service
 
-import com.example.warehouse_accounting_server.config.ApiException
+import com.example.warehouse_accounting_server.config.ConflictException
+import com.example.warehouse_accounting_server.config.ForbiddenException
+import com.example.warehouse_accounting_server.config.NotFoundException
+import com.example.warehouse_accounting_server.config.UnauthorizedException
 import com.example.warehouse_accounting_server.data.mapper.toResponse
-import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.model.UserStatus
 import com.example.warehouse_accounting_server.domain.repository.UserRepository
 import com.example.warehouse_accounting_server.domain.validation.AuthValidator
 import com.example.warehouse_accounting_server.dto.request.auth.LoginRequest
 import com.example.warehouse_accounting_server.dto.request.auth.RegisterRequest
 import com.example.warehouse_accounting_server.dto.response.auth.AuthResponse
-import com.example.warehouse_accounting_server.dto.response.auth.CurrentUserResponse
+import com.example.warehouse_accounting_server.dto.response.user.UserResponse
 import com.example.warehouse_accounting_server.util.DateTimeProvider
 import com.example.warehouse_accounting_server.util.JwtProvider
 import com.example.warehouse_accounting_server.util.PasswordHasher
-import io.ktor.http.HttpStatusCode
 
 class AuthService(
     private val userRepository: UserRepository,
@@ -22,51 +23,50 @@ class AuthService(
     private val authValidator: AuthValidator,
     private val dateTime: DateTimeProvider,
 ) {
-    fun register(request: RegisterRequest): AuthResponse {
+    fun register(request: RegisterRequest): UserResponse {
         authValidator.validateRegister(request)
         val email = request.email.trim().lowercase()
         if (userRepository.findByEmail(email) != null) {
-            throw ApiException(HttpStatusCode.Conflict, "Email already registered")
+            throw ConflictException("Пользователь с таким email уже существует")
         }
-        val role = UserRole.valueOf(request.requestedRole)
         val user = userRepository.create(
             email = email,
             passwordHash = passwordHasher.hash(request.password),
             fullName = request.fullName.trim(),
-            role = role,
+            role = request.requestedRole,
             status = UserStatus.PENDING,
             now = dateTime.now(),
         )
-        val token = jwtProvider.createAccessToken(user.id, user.role)
-        return AuthResponse(
-            token = token,
-            user = user.toResponse(),
-        )
+        return user.toResponse()
     }
 
     fun login(request: LoginRequest): AuthResponse {
+        authValidator.validateLogin(request)
         val email = request.email.trim().lowercase()
         val user = userRepository.findByEmail(email)
-            ?: throw ApiException(HttpStatusCode.Unauthorized, "Invalid credentials")
+            ?: throw UnauthorizedException("Неверный email или пароль")
         if (!passwordHasher.verify(request.password, user.passwordHash)) {
-            throw ApiException(HttpStatusCode.Unauthorized, "Invalid credentials")
-        }
-        if (user.status == UserStatus.BLOCKED) {
-            throw ApiException(HttpStatusCode.Forbidden, "User blocked")
+            throw UnauthorizedException("Неверный email или пароль")
         }
         if (user.status == UserStatus.PENDING) {
-            throw ApiException(HttpStatusCode.Forbidden, "User not approved yet")
+            throw ForbiddenException("Аккаунт ожидает подтверждения администратором")
         }
-        val token = jwtProvider.createAccessToken(user.id, user.role)
+        if (user.status == UserStatus.BLOCKED) {
+            throw ForbiddenException("Аккаунт заблокирован")
+        }
+        val token = jwtProvider.createAccessToken(user)
         return AuthResponse(
             token = token,
             user = user.toResponse(),
         )
     }
 
-    fun me(userId: Long): CurrentUserResponse {
+    fun getCurrentUser(userId: Long): UserResponse {
         val user = userRepository.findById(userId)
-            ?: throw ApiException(HttpStatusCode.Unauthorized, "User not found")
-        return CurrentUserResponse.from(user.toResponse())
+            ?: throw NotFoundException("Пользователь не найден")
+        if (user.status != UserStatus.ACTIVE) {
+            throw ForbiddenException("Пользователь больше не активен")
+        }
+        return user.toResponse()
     }
 }

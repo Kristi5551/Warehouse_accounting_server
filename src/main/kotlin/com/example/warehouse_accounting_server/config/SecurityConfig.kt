@@ -30,7 +30,10 @@ fun Application.configureSecurity(
             challenge { _, _ ->
                 call.respond(
                     HttpStatusCode.Unauthorized,
-                    ErrorResponse(message = "Unauthorized", details = null),
+                    ErrorResponse(
+                        message = "Токен авторизации отсутствует или недействителен",
+                        details = null,
+                    ),
                 )
             }
         }

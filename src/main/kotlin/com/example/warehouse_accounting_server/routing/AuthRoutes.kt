@@ -1,5 +1,6 @@
 package com.example.warehouse_accounting_server.routing
 
+import com.example.warehouse_accounting_server.config.userId
 import com.example.warehouse_accounting_server.domain.service.AuthService
 import com.example.warehouse_accounting_server.dto.request.auth.LoginRequest
 import com.example.warehouse_accounting_server.dto.request.auth.RegisterRequest
@@ -14,7 +15,6 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
-import com.example.warehouse_accounting_server.config.userId
 
 fun Route.authRoutes(authService: AuthService) {
     route("/api/auth") {
@@ -30,7 +30,7 @@ fun Route.authRoutes(authService: AuthService) {
         authenticate("auth-jwt") {
             get("/me") {
                 val principal = call.principal<JWTPrincipal>()!!
-                call.respond(authService.me(principal.userId()))
+                call.respond(authService.getCurrentUser(principal.userId()))
             }
         }
     }
