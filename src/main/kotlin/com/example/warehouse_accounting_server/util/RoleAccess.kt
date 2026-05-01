@@ -7,7 +7,7 @@ import io.ktor.http.HttpStatusCode
 object RoleAccess {
     fun require(actual: UserRole, vararg allowed: UserRole) {
         if (actual !in allowed) {
-            throw ApiException(HttpStatusCode.Forbidden, "Insufficient permissions")
+            throw ApiException(HttpStatusCode.Forbidden, "Недостаточно прав")
         }
     }
 }

@@ -20,4 +20,5 @@ interface UserRepository {
 
     fun updateStatus(id: Long, status: UserStatus, now: java.time.LocalDateTime): Boolean
     fun updateRole(id: Long, role: UserRole, now: java.time.LocalDateTime): Boolean
+    fun countActiveAdmins(): Long
 }
