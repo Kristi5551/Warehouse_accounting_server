@@ -22,25 +22,51 @@ import io.ktor.server.routing.route
 fun Route.categoryRoutes(categoryService: CategoryService) {
     authenticate("auth-jwt") {
         route("/api/categories") {
+            // GET /api/categories — ADMIN, STOREKEEPER, MANAGER
             get {
-                call.respond(categoryService.list())
+                call.principal<JWTPrincipal>()!!
+                    .requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
+                val activeOnly = call.request.queryParameters["activeOnly"] != "false"
+                call.respond(categoryService.list(activeOnly))
             }
+
+            // GET /api/categories/{id} — ADMIN, STOREKEEPER, MANAGER
+            get("/{id}") {
+                call.principal<JWTPrincipal>()!!
+                    .requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
+                val id = call.parameters["id"]?.toLongOrNull()
+                    ?: throw com.example.warehouse_accounting_server.config.ApiException(
+                        io.ktor.http.HttpStatusCode.BadRequest, "Неверный идентификатор",
+                    )
+                call.respond(categoryService.getById(id))
+            }
+
+            // POST /api/categories — только ADMIN
             post {
-                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
+                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN)
                 val body = call.receive<CreateCategoryRequest>()
                 call.respond(HttpStatusCode.Created, categoryService.create(body))
             }
+
+            // PUT /api/categories/{id} — только ADMIN
             put("/{id}") {
-                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
-                val id = call.parameters["id"]!!.toLong()
+                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN)
+                val id = call.parameters["id"]?.toLongOrNull()
+                    ?: throw com.example.warehouse_accounting_server.config.ApiException(
+                        io.ktor.http.HttpStatusCode.BadRequest, "Неверный идентификатор",
+                    )
                 val body = call.receive<UpdateCategoryRequest>()
                 call.respond(categoryService.update(id, body))
             }
+
+            // DELETE /api/categories/{id} — мягкое удаление, только ADMIN
             delete("/{id}") {
-                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
-                val id = call.parameters["id"]!!.toLong()
-                categoryService.deactivate(id)
-                call.respond(HttpStatusCode.NoContent)
+                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN)
+                val id = call.parameters["id"]?.toLongOrNull()
+                    ?: throw com.example.warehouse_accounting_server.config.ApiException(
+                        io.ktor.http.HttpStatusCode.BadRequest, "Неверный идентификатор",
+                    )
+                call.respond(categoryService.deactivate(id))
             }
         }
     }
