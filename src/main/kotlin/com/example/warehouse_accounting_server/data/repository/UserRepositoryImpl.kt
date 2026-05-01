@@ -60,4 +60,13 @@ class UserRepositoryImpl : UserRepository {
             it[updatedAt] = now
         } > 0
     }
+
+    override fun countActiveAdmins(): Long = transaction {
+        UsersTable
+            .selectAll()
+            .where {
+                (UsersTable.role eq UserRole.ADMIN.name) and (UsersTable.status eq UserStatus.ACTIVE.name)
+            }
+            .count()
+    }
 }
