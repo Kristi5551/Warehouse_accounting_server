@@ -4,12 +4,16 @@ import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.model.UserStatus
 import com.example.warehouse_accounting_server.domain.repository.CategoryRepository
 import com.example.warehouse_accounting_server.domain.repository.ProductRepository
+import com.example.warehouse_accounting_server.domain.repository.StockRepository
 import com.example.warehouse_accounting_server.domain.repository.UserRepository
+import com.example.warehouse_accounting_server.domain.repository.WarehouseRepository
 import com.example.warehouse_accounting_server.util.DateTimeProvider
 import com.example.warehouse_accounting_server.util.PasswordHasher
 import java.math.BigDecimal
 
 object InitialDataSeed {
+    const val MAIN_WAREHOUSE_NAME = "Основной склад"
+
     private const val ADMIN_EMAIL = "admin@warehouse.local"
     private const val ADMIN_PASSWORD = "admin123"
 
@@ -86,6 +90,23 @@ object InitialDataSeed {
                 minStock = seed.minStock,
                 now = dateTime.now(),
             )
+        }
+    }
+
+    fun ensureMainWarehouse(warehouseRepository: WarehouseRepository, dateTime: DateTimeProvider) {
+        if (warehouseRepository.findByName(MAIN_WAREHOUSE_NAME) != null) return
+        warehouseRepository.create(MAIN_WAREHOUSE_NAME, address = null, now = dateTime.now())
+    }
+
+    fun ensureStockBalances(
+        productRepository: ProductRepository,
+        stockRepository: StockRepository,
+        warehouseRepository: WarehouseRepository,
+        dateTime: DateTimeProvider,
+    ) {
+        val warehouse = warehouseRepository.findByName(MAIN_WAREHOUSE_NAME) ?: return
+        for (product in productRepository.findAll(activeOnly = true)) {
+            stockRepository.createBalanceIfMissing(product.id, warehouse.id, dateTime.now())
         }
     }
 }

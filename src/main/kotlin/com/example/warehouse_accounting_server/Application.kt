@@ -97,6 +97,8 @@ fun Application.module() {
                 InitialDataSeed.ensureAdmin(userRepository, passwordHasher, dateTime)
                 InitialDataSeed.ensureCategories(categoryRepository, dateTime)
                 InitialDataSeed.ensureProducts(productRepository, categoryRepository, dateTime)
+                InitialDataSeed.ensureMainWarehouse(warehouseRepository, dateTime)
+                InitialDataSeed.ensureStockBalances(productRepository, stockRepository, warehouseRepository, dateTime)
 
                 val authService = AuthService(userRepository, passwordHasher, jwtProvider, authValidator, dateTime)
                 val userService = UserService(userRepository, dateTime)

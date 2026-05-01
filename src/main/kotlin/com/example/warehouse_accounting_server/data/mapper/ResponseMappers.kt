@@ -2,10 +2,12 @@ package com.example.warehouse_accounting_server.data.mapper
 
 import com.example.warehouse_accounting_server.domain.model.Category
 import com.example.warehouse_accounting_server.domain.model.Product
+import com.example.warehouse_accounting_server.domain.model.stockStatusFor
 import com.example.warehouse_accounting_server.domain.model.StockBalance
 import com.example.warehouse_accounting_server.domain.model.StockOperationItem
 import com.example.warehouse_accounting_server.domain.model.StockStatus
 import com.example.warehouse_accounting_server.domain.model.User
+import com.example.warehouse_accounting_server.domain.repository.StockBalanceView
 import com.example.warehouse_accounting_server.dto.response.category.CategoryResponse
 import com.example.warehouse_accounting_server.dto.response.product.ProductResponse
 import com.example.warehouse_accounting_server.dto.response.stock.StockBalanceResponse
@@ -69,6 +71,23 @@ fun StockBalance.toBalanceResponse(
         status = status.name,
         updatedAt = updatedAt.toString(),
     )
+
+fun StockBalanceView.toBalanceResponse(): StockBalanceResponse {
+    val st = stockStatusFor(quantity, minStock)
+    return StockBalanceResponse(
+        id = id,
+        productId = productId,
+        productArticle = productArticle,
+        productName = productName,
+        categoryName = categoryName,
+        warehouseId = warehouseId,
+        warehouseName = warehouseName,
+        quantity = quantity.stripTrailingZeros().toPlainString(),
+        minStock = minStock.stripTrailingZeros().toPlainString(),
+        status = st.name,
+        updatedAt = updatedAt.toString(),
+    )
+}
 
 fun StockOperationItem.toItemResponse(): StockOperationItemResponse =
     StockOperationItemResponse(
