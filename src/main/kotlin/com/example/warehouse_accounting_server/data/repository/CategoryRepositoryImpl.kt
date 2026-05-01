@@ -4,21 +4,42 @@ import com.example.warehouse_accounting_server.data.mapper.CategoryMapper
 import com.example.warehouse_accounting_server.data.table.CategoriesTable
 import com.example.warehouse_accounting_server.domain.model.Category
 import com.example.warehouse_accounting_server.domain.repository.CategoryRepository
-import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.insertAndGetId
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
 import java.time.LocalDateTime
 
 class CategoryRepositoryImpl : CategoryRepository {
+
     override fun findAll(includeInactive: Boolean): List<Category> = transaction {
         if (includeInactive) {
             CategoriesTable.selectAll()
         } else {
             CategoriesTable.selectAll().where { CategoriesTable.isActive eq true }
-        }.map(CategoryMapper::toDomain)
+        }.orderBy(CategoriesTable.name).map(CategoryMapper::toDomain)
     }
 
     override fun findById(id: Long): Category? = transaction {
-        CategoriesTable.selectAll().where { CategoriesTable.id eq id }.singleOrNull()?.let(CategoryMapper::toDomain)
+        CategoriesTable.selectAll()
+            .where { CategoriesTable.id eq id }
+            .singleOrNull()
+            ?.let(CategoryMapper::toDomain)
+    }
+
+    override fun findByName(name: String): Category? = transaction {
+        CategoriesTable.selectAll()
+            .where { CategoriesTable.name eq name }
+            .singleOrNull()
+            ?.let(CategoryMapper::toDomain)
+    }
+
+    override fun existsByName(name: String, excludeId: Long?): Boolean = transaction {
+        val rows = CategoriesTable.selectAll()
+            .where { CategoriesTable.name eq name }
+            .toList()
+        if (excludeId == null) rows.isNotEmpty()
+        else rows.any { it[CategoriesTable.id].value != excludeId }
     }
 
     override fun create(name: String, description: String?, now: LocalDateTime): Category = transaction {
@@ -42,10 +63,11 @@ class CategoryRepositoryImpl : CategoryRepository {
         if (updated == 0) null else findById(id)
     }
 
-    override fun deactivate(id: Long, now: LocalDateTime): Boolean = transaction {
-        CategoriesTable.update({ CategoriesTable.id eq id }) {
+    override fun deactivate(id: Long, now: LocalDateTime): Category? = transaction {
+        val updated = CategoriesTable.update({ CategoriesTable.id eq id }) {
             it[CategoriesTable.isActive] = false
             it[updatedAt] = now
-        } > 0
+        }
+        if (updated == 0) null else findById(id)
     }
 }

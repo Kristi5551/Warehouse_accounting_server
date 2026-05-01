@@ -95,6 +95,7 @@ fun Application.module() {
                 val reportRepository = ReportRepositoryImpl()
 
                 InitialDataSeed.ensureAdmin(userRepository, passwordHasher, dateTime)
+                InitialDataSeed.ensureCategories(categoryRepository, dateTime)
 
                 val authService = AuthService(userRepository, passwordHasher, jwtProvider, authValidator, dateTime)
                 val userService = UserService(userRepository, dateTime)
