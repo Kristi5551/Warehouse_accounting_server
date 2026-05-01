@@ -1,15 +1,19 @@
 package com.example.warehouse_accounting_server.data.repository
 
 import com.example.warehouse_accounting_server.config.ApiException
+import com.example.warehouse_accounting_server.data.table.CategoriesTable
 import com.example.warehouse_accounting_server.data.table.ProductsTable
 import com.example.warehouse_accounting_server.data.table.StockBalancesTable
 import com.example.warehouse_accounting_server.data.table.StockOperationItemsTable
 import com.example.warehouse_accounting_server.data.table.StockOperationsTable
+import com.example.warehouse_accounting_server.data.table.WarehousesTable
 import com.example.warehouse_accounting_server.domain.model.StockBalance
 import com.example.warehouse_accounting_server.domain.model.StockOperation
 import com.example.warehouse_accounting_server.domain.model.StockOperationItem
 import com.example.warehouse_accounting_server.domain.model.StockOperationType
 import com.example.warehouse_accounting_server.domain.model.StockOperationWithItems
+import com.example.warehouse_accounting_server.domain.model.StockStatus
+import com.example.warehouse_accounting_server.domain.repository.StockBalanceView
 import com.example.warehouse_accounting_server.domain.repository.StockHistoryFilter
 import com.example.warehouse_accounting_server.domain.repository.StockRepository
 import io.ktor.http.HttpStatusCode
@@ -20,36 +24,117 @@ import java.time.LocalDateTime
 
 class StockRepositoryImpl : StockRepository {
 
-    override fun listBalances(warehouseId: Long?): List<StockBalance> = transaction {
-        var q = StockBalancesTable.selectAll()
-        if (warehouseId != null) {
-            q = q.andWhere { StockBalancesTable.warehouseId eq warehouseId }
-        }
-        q.map { row ->
-            StockBalance(
-                id = row[StockBalancesTable.id].value,
-                productId = row[StockBalancesTable.productId].value,
-                warehouseId = row[StockBalancesTable.warehouseId].value,
-                quantity = row[StockBalancesTable.quantity],
-                updatedAt = row[StockBalancesTable.updatedAt],
-            )
+    private val balanceJoin =
+        StockBalancesTable innerJoin ProductsTable innerJoin CategoriesTable innerJoin WarehousesTable
+
+    private fun ResultRow.toStockBalanceView(): StockBalanceView =
+        StockBalanceView(
+            id = this[StockBalancesTable.id].value,
+            productId = this[StockBalancesTable.productId].value,
+            productArticle = this[ProductsTable.article],
+            productName = this[ProductsTable.name],
+            categoryName = this[CategoriesTable.name],
+            warehouseId = this[StockBalancesTable.warehouseId].value,
+            warehouseName = this[WarehousesTable.name],
+            quantity = this[StockBalancesTable.quantity],
+            minStock = this[ProductsTable.minStock],
+            updatedAt = this[StockBalancesTable.updatedAt],
+        )
+
+    override fun getBalances(search: String?, categoryId: Long?, status: StockStatus?): List<StockBalanceView> = transaction {
+        balanceJoin
+            .selectAll()
+            .where {
+                var condition: Op<Boolean> = ProductsTable.isActive eq true
+                categoryId?.let { condition = condition and (ProductsTable.categoryId eq it) }
+                status?.let { s ->
+                    condition = condition and when (s) {
+                        StockStatus.OUT_OF_STOCK -> StockBalancesTable.quantity eq BigDecimal.ZERO
+                        StockStatus.LOW_STOCK ->
+                            (StockBalancesTable.quantity greater BigDecimal.ZERO) and
+                                (StockBalancesTable.quantity lessEq ProductsTable.minStock)
+                        StockStatus.IN_STOCK -> StockBalancesTable.quantity greater ProductsTable.minStock
+                    }
+                }
+                val q = search?.trim().orEmpty()
+                if (q.isNotEmpty()) {
+                    val p = "%$q%"
+                    condition =
+                        condition and (
+                            (ProductsTable.name like p) or (ProductsTable.article like p)
+                        )
+                }
+                condition
+            }
+            .orderBy(ProductsTable.name to SortOrder.ASC)
+            .map { it.toStockBalanceView() }
+    }
+
+    /** Остаток ≤ min (включая ноль) для активных товаров. */
+    override fun getLowStock(): List<StockBalanceView> = transaction {
+        balanceJoin
+            .selectAll()
+            .where {
+                (ProductsTable.isActive eq true) and
+                    (StockBalancesTable.quantity lessEq ProductsTable.minStock)
+            }
+            .orderBy(StockBalancesTable.quantity to SortOrder.ASC)
+            .map { it.toStockBalanceView() }
+    }
+
+    override fun findBalance(productId: Long, warehouseId: Long): StockBalance? = transaction {
+        StockBalancesTable.selectAll()
+            .where {
+                (StockBalancesTable.productId eq productId) and
+                    (StockBalancesTable.warehouseId eq warehouseId)
+            }
+            .singleOrNull()?.let { row ->
+                StockBalance(
+                    id = row[StockBalancesTable.id].value,
+                    productId = row[StockBalancesTable.productId].value,
+                    warehouseId = row[StockBalancesTable.warehouseId].value,
+                    quantity = row[StockBalancesTable.quantity],
+                    updatedAt = row[StockBalancesTable.updatedAt],
+                )
+            }
+    }
+
+    override fun createBalanceIfMissing(productId: Long, warehouseId: Long, now: LocalDateTime): StockBalance = transaction {
+        findBalance(productId, warehouseId) ?: run {
+            StockBalancesTable.insert {
+                it[StockBalancesTable.productId] = productId
+                it[StockBalancesTable.warehouseId] = warehouseId
+                it[StockBalancesTable.quantity] = BigDecimal.ZERO
+                it[StockBalancesTable.updatedAt] = now
+            }
+            findBalance(productId, warehouseId)!!
         }
     }
 
-    override fun listLowStock(warehouseId: Long?): List<StockBalance> = transaction {
-        val join = StockBalancesTable innerJoin ProductsTable
-        join.selectAll().where {
-            val wh = warehouseId?.let { StockBalancesTable.warehouseId eq it } ?: Op.TRUE
-            wh and (StockBalancesTable.quantity less ProductsTable.minStock)
-        }.map { row ->
-            StockBalance(
-                id = row[StockBalancesTable.id].value,
-                productId = row[StockBalancesTable.productId].value,
-                warehouseId = row[StockBalancesTable.warehouseId].value,
-                quantity = row[StockBalancesTable.quantity],
-                updatedAt = row[StockBalancesTable.updatedAt],
-            )
+    override fun updateQuantity(productId: Long, warehouseId: Long, quantity: BigDecimal, now: LocalDateTime): StockBalance = transaction {
+        val existing = StockBalancesTable.selectAll()
+            .where {
+                (StockBalancesTable.productId eq productId) and
+                    (StockBalancesTable.warehouseId eq warehouseId)
+            }
+            .singleOrNull()
+        if (existing == null) {
+            StockBalancesTable.insert {
+                it[StockBalancesTable.productId] = productId
+                it[StockBalancesTable.warehouseId] = warehouseId
+                it[StockBalancesTable.quantity] = quantity
+                it[StockBalancesTable.updatedAt] = now
+            }
+        } else {
+            StockBalancesTable.update({
+                (StockBalancesTable.productId eq productId) and
+                    (StockBalancesTable.warehouseId eq warehouseId)
+            }) {
+                it[StockBalancesTable.quantity] = quantity
+                it[StockBalancesTable.updatedAt] = now
+            }
         }
+        findBalance(productId, warehouseId)!!
     }
 
     override fun historyForProduct(productId: Long, filter: StockHistoryFilter): List<StockOperationWithItems> = transaction {
@@ -66,23 +151,23 @@ class StockRepositoryImpl : StockRepository {
     }
 
     private fun loadOperationWithItems(operationId: Long): StockOperationWithItems? {
-        val opRow = StockOperationsTable.selectAll().where { StockOperationsTable.id eq operationId }.singleOrNull() ?: return null
+        val row = StockOperationsTable.selectAll().where { StockOperationsTable.id eq operationId }.singleOrNull() ?: return null
         val op = StockOperation(
-            id = opRow[StockOperationsTable.id].value,
-            operationType = StockOperationType.valueOf(opRow[StockOperationsTable.operationType]),
-            warehouseId = opRow[StockOperationsTable.warehouseId].value,
-            createdBy = opRow[StockOperationsTable.createdBy].value,
-            createdAt = opRow[StockOperationsTable.createdAt],
-            comment = opRow[StockOperationsTable.comment],
+            id = row[StockOperationsTable.id].value,
+            operationType = StockOperationType.valueOf(row[StockOperationsTable.operationType]),
+            warehouseId = row[StockOperationsTable.warehouseId].value,
+            createdBy = row[StockOperationsTable.createdBy].value,
+            createdAt = row[StockOperationsTable.createdAt],
+            comment = row[StockOperationsTable.comment],
         )
-        val items = StockOperationItemsTable.selectAll().where { StockOperationItemsTable.operationId eq operationId }.map { row ->
+        val items = StockOperationItemsTable.selectAll().where { StockOperationItemsTable.operationId eq operationId }.map { r ->
             StockOperationItem(
-                id = row[StockOperationItemsTable.id].value,
+                id = r[StockOperationItemsTable.id].value,
                 operationId = operationId,
-                productId = row[StockOperationItemsTable.productId].value,
-                quantity = row[StockOperationItemsTable.quantity],
-                price = row[StockOperationItemsTable.price],
-                reason = row[StockOperationItemsTable.reason],
+                productId = r[StockOperationItemsTable.productId].value,
+                quantity = r[StockOperationItemsTable.quantity],
+                price = r[StockOperationItemsTable.price],
+                reason = r[StockOperationItemsTable.reason],
             )
         }
         return StockOperationWithItems(op, items)
@@ -203,7 +288,10 @@ class StockRepositoryImpl : StockRepository {
 
     private fun getBalanceQuantity(productId: Long, warehouseId: Long): BigDecimal {
         val row = StockBalancesTable.selectAll()
-            .where { (StockBalancesTable.productId eq productId) and (StockBalancesTable.warehouseId eq warehouseId) }
+            .where {
+                (StockBalancesTable.productId eq productId) and
+                    (StockBalancesTable.warehouseId eq warehouseId)
+            }
             .singleOrNull()
         return row?.get(StockBalancesTable.quantity) ?: BigDecimal.ZERO
     }
@@ -237,7 +325,10 @@ class StockRepositoryImpl : StockRepository {
             it[StockOperationItemsTable.reason] = reason
         }
         val existing = StockBalancesTable.selectAll()
-            .where { (StockBalancesTable.productId eq productId) and (StockBalancesTable.warehouseId eq warehouseId) }
+            .where {
+                (StockBalancesTable.productId eq productId) and
+                    (StockBalancesTable.warehouseId eq warehouseId)
+            }
             .singleOrNull()
         if (existing == null) {
             StockBalancesTable.insert {
@@ -247,7 +338,10 @@ class StockRepositoryImpl : StockRepository {
                 it[StockBalancesTable.updatedAt] = now
             }
         } else {
-            StockBalancesTable.update({ (StockBalancesTable.productId eq productId) and (StockBalancesTable.warehouseId eq warehouseId) }) {
+            StockBalancesTable.update({
+                (StockBalancesTable.productId eq productId) and
+                    (StockBalancesTable.warehouseId eq warehouseId)
+            }) {
                 it[StockBalancesTable.quantity] = newQty
                 it[StockBalancesTable.updatedAt] = now
             }

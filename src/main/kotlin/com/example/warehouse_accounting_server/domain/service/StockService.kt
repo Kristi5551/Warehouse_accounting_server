@@ -5,9 +5,12 @@ import com.example.warehouse_accounting_server.data.mapper.toBalanceResponse
 import com.example.warehouse_accounting_server.data.mapper.toItemResponse
 import com.example.warehouse_accounting_server.domain.model.StockOperationType
 import com.example.warehouse_accounting_server.domain.model.StockStatus
+import com.example.warehouse_accounting_server.domain.model.UserRole
+import com.example.warehouse_accounting_server.domain.model.UserStatus
 import com.example.warehouse_accounting_server.domain.repository.ProductRepository
 import com.example.warehouse_accounting_server.domain.repository.StockHistoryFilter
 import com.example.warehouse_accounting_server.domain.repository.StockRepository
+import com.example.warehouse_accounting_server.domain.repository.UserRepository
 import com.example.warehouse_accounting_server.domain.repository.WarehouseRepository
 import com.example.warehouse_accounting_server.domain.validation.StockOperationValidator
 import com.example.warehouse_accounting_server.dto.request.stock.CreateInventoryRequest
@@ -17,6 +20,7 @@ import com.example.warehouse_accounting_server.dto.request.stock.CreateWriteOffR
 import com.example.warehouse_accounting_server.dto.response.stock.StockBalanceResponse
 import com.example.warehouse_accounting_server.dto.response.stock.StockOperationResponse
 import com.example.warehouse_accounting_server.util.DateTimeProvider
+import com.example.warehouse_accounting_server.util.RoleAccess
 import io.ktor.http.HttpStatusCode
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -26,49 +30,32 @@ class StockService(
     private val stockRepository: StockRepository,
     private val productRepository: ProductRepository,
     private val warehouseRepository: WarehouseRepository,
-    private val userRepository: com.example.warehouse_accounting_server.domain.repository.UserRepository,
+    private val userRepository: UserRepository,
     private val stockOperationValidator: StockOperationValidator,
     private val dateTime: DateTimeProvider,
 ) {
-    fun balances(warehouseId: Long?): List<StockBalanceResponse> {
-        val rows = stockRepository.listBalances(warehouseId)
-        return rows.map { b ->
-            val product = productRepository.findById(b.productId)
-                ?: throw ApiException(HttpStatusCode.InternalServerError, "Product missing for balance")
-            val warehouse = warehouseRepository.findById(b.warehouseId)
-                ?: throw ApiException(HttpStatusCode.InternalServerError, "Warehouse missing for balance")
-            val status = when {
-                b.quantity <= BigDecimal.ZERO -> StockStatus.OUT_OF_STOCK
-                b.quantity < product.minStock -> StockStatus.LOW_STOCK
-                else -> StockStatus.IN_STOCK
-            }
-            b.toBalanceResponse(
-                productArticle = product.article,
-                productName = product.name,
-                categoryName = product.categoryName,
-                warehouseName = warehouse.name,
-                minStock = product.minStock,
-                status = status,
-            )
-        }
+    fun getBalances(
+        currentUserId: Long,
+        search: String?,
+        categoryId: Long?,
+        status: StockStatus?,
+    ): List<StockBalanceResponse> {
+        ensureStockReader(currentUserId)
+        return stockRepository.getBalances(search, categoryId, status).map { it.toBalanceResponse() }
     }
 
-    fun lowStock(warehouseId: Long?): List<StockBalanceResponse> {
-        val rows = stockRepository.listLowStock(warehouseId)
-        return rows.map { b ->
-            val product = productRepository.findById(b.productId)
-                ?: throw ApiException(HttpStatusCode.InternalServerError, "Product missing for balance")
-            val warehouse = warehouseRepository.findById(b.warehouseId)
-                ?: throw ApiException(HttpStatusCode.InternalServerError, "Warehouse missing for balance")
-            b.toBalanceResponse(
-                productArticle = product.article,
-                productName = product.name,
-                categoryName = product.categoryName,
-                warehouseName = warehouse.name,
-                minStock = product.minStock,
-                status = StockStatus.LOW_STOCK,
-            )
+    fun getLowStock(currentUserId: Long): List<StockBalanceResponse> {
+        ensureStockReader(currentUserId)
+        return stockRepository.getLowStock().map { it.toBalanceResponse() }
+    }
+
+    private fun ensureStockReader(userId: Long) {
+        val user = userRepository.findById(userId)
+            ?: throw ApiException(HttpStatusCode.Unauthorized, "Пользователь не найден")
+        if (user.status != UserStatus.ACTIVE) {
+            throw ApiException(HttpStatusCode.Forbidden, "Доступ запрещён: учётная запись не активна")
         }
+        RoleAccess.require(user.role, UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
     }
 
     fun productHistory(

@@ -4,6 +4,7 @@ import com.example.warehouse_accounting_server.domain.model.StockBalance
 import com.example.warehouse_accounting_server.domain.model.StockOperation
 import com.example.warehouse_accounting_server.domain.model.StockOperationType
 import com.example.warehouse_accounting_server.domain.model.StockOperationWithItems
+import com.example.warehouse_accounting_server.domain.model.StockStatus
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -16,8 +17,12 @@ data class StockHistoryFilter(
 )
 
 interface StockRepository {
-    fun listBalances(warehouseId: Long? = null): List<StockBalance>
-    fun listLowStock(warehouseId: Long? = null): List<StockBalance>
+    fun getBalances(search: String?, categoryId: Long?, status: StockStatus?): List<StockBalanceView>
+    fun getLowStock(): List<StockBalanceView>
+
+    fun findBalance(productId: Long, warehouseId: Long): StockBalance?
+    fun createBalanceIfMissing(productId: Long, warehouseId: Long, now: LocalDateTime): StockBalance
+    fun updateQuantity(productId: Long, warehouseId: Long, quantity: BigDecimal, now: LocalDateTime): StockBalance
 
     fun historyForProduct(productId: Long, filter: StockHistoryFilter): List<StockOperationWithItems>
 

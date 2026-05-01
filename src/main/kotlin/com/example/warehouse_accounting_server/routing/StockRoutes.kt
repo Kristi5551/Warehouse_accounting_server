@@ -4,6 +4,7 @@ import com.example.warehouse_accounting_server.config.requireRoles
 import com.example.warehouse_accounting_server.config.userId
 import com.example.warehouse_accounting_server.config.userRole
 import com.example.warehouse_accounting_server.domain.model.StockOperationType
+import com.example.warehouse_accounting_server.domain.model.StockStatus
 import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.service.StockService
 import com.example.warehouse_accounting_server.dto.request.stock.CreateInventoryRequest
@@ -26,12 +27,15 @@ fun Route.stockRoutes(stockService: StockService) {
     authenticate("auth-jwt") {
         route("/api/stock") {
             get("/balances") {
-                val wh = call.request.queryParameters["warehouseId"]?.toLongOrNull()
-                call.respond(stockService.balances(wh))
+                val userId = call.principal<JWTPrincipal>()!!.userId()
+                val search = call.request.queryParameters["search"]
+                val categoryId = call.request.queryParameters["categoryId"]?.toLongOrNull()
+                val status = call.request.queryParameters["status"]?.let { StockStatus.valueOf(it) }
+                call.respond(stockService.getBalances(userId, search, categoryId, status))
             }
             get("/low") {
-                val wh = call.request.queryParameters["warehouseId"]?.toLongOrNull()
-                call.respond(stockService.lowStock(wh))
+                val userId = call.principal<JWTPrincipal>()!!.userId()
+                call.respond(stockService.getLowStock(userId))
             }
             get("/products/{id}/history") {
                 val id = call.parameters["id"]!!.toLong()
