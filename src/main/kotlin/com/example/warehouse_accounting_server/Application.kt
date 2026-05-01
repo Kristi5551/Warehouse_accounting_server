@@ -3,6 +3,7 @@ package com.example.warehouse_accounting_server
 import com.example.warehouse_accounting_server.config.AppConfig
 import com.example.warehouse_accounting_server.config.DatabaseConfig
 import com.example.warehouse_accounting_server.config.InitialDataSeed
+import com.example.warehouse_accounting_server.config.ServerReadiness
 import com.example.warehouse_accounting_server.config.configureCallLogging
 import com.example.warehouse_accounting_server.config.configureCors
 import com.example.warehouse_accounting_server.config.configureRouting
@@ -24,57 +25,107 @@ import com.example.warehouse_accounting_server.domain.service.UserService
 import com.example.warehouse_accounting_server.domain.validation.AuthValidator
 import com.example.warehouse_accounting_server.domain.validation.ProductValidator
 import com.example.warehouse_accounting_server.domain.validation.StockOperationValidator
+import com.example.warehouse_accounting_server.dto.response.ErrorResponse
 import com.example.warehouse_accounting_server.util.DateTimeProvider
 import com.example.warehouse_accounting_server.util.JwtProvider
 import com.example.warehouse_accounting_server.util.PasswordHasher
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.application.ApplicationStarted
+import io.ktor.server.request.path
+import io.ktor.server.response.respond
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 fun Application.module() {
     val appConfig = AppConfig.load(this)
-
-    DatabaseConfig.connect(appConfig.database)
-
     val jwtProvider = JwtProvider(appConfig.jwt)
-    val passwordHasher = PasswordHasher()
-    val dateTime = DateTimeProvider()
-    val authValidator = AuthValidator()
-    val productValidator = ProductValidator()
-    val stockOperationValidator = StockOperationValidator(productValidator)
-
-    val userRepository = UserRepositoryImpl()
-    val categoryRepository = CategoryRepositoryImpl()
-    val productRepository = ProductRepositoryImpl()
-    val warehouseRepository = WarehouseRepositoryImpl()
-    val stockRepository = StockRepositoryImpl()
-    val reportRepository = ReportRepositoryImpl()
-
-    InitialDataSeed.ensureAdmin(userRepository, passwordHasher, dateTime)
-
-    val authService = AuthService(userRepository, passwordHasher, jwtProvider, authValidator, dateTime)
-    val userService = UserService(userRepository, dateTime)
-    val categoryService = CategoryService(categoryRepository, dateTime)
-    val productService = ProductService(productRepository, productValidator, dateTime)
-    val stockService = StockService(
-        stockRepository,
-        productRepository,
-        warehouseRepository,
-        userRepository,
-        stockOperationValidator,
-        dateTime,
-    )
-    val reportService = ReportService(reportRepository)
 
     configureSerialization()
     configureStatusPages()
     configureCors()
     configureCallLogging()
     configureSecurity(appConfig, jwtProvider)
-    configureRouting(
-        authService = authService,
-        userService = userService,
-        categoryService = categoryService,
-        productService = productService,
-        stockService = stockService,
-        reportService = reportService,
-    )
+
+    /**
+     * Порт открывается до завершения Flyway/БД. Пока API не готов — отвечаем 503, чтобы клиент
+     * не ждал TCP connect timeout (как при полностью выключенном сервере).
+     */
+    intercept(ApplicationCallPipeline.Call) {
+        val path = context.request.path()
+        if (!ServerReadiness.isReady() && path.startsWith("/api") && path != "/api/health") {
+            context.respond(
+                HttpStatusCode.ServiceUnavailable,
+                ErrorResponse(
+                    message = "Сервер запускается, ожидайте подключения к базе данных.",
+                    details = null,
+                ),
+            )
+            finish()
+        }
+    }
+
+    routing {
+        get("/api/health") {
+            call.respond(mapOf("status" to "ok"))
+        }
+    }
+
+    monitor.subscribe(ApplicationStarted) {
+        launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    DatabaseConfig.connect(appConfig.database)
+                }
+                val passwordHasher = PasswordHasher()
+                val dateTime = DateTimeProvider()
+                val authValidator = AuthValidator()
+                val productValidator = ProductValidator()
+                val stockOperationValidator = StockOperationValidator(productValidator)
+
+                val userRepository = UserRepositoryImpl()
+                val categoryRepository = CategoryRepositoryImpl()
+                val productRepository = ProductRepositoryImpl()
+                val warehouseRepository = WarehouseRepositoryImpl()
+                val stockRepository = StockRepositoryImpl()
+                val reportRepository = ReportRepositoryImpl()
+
+                InitialDataSeed.ensureAdmin(userRepository, passwordHasher, dateTime)
+
+                val authService = AuthService(userRepository, passwordHasher, jwtProvider, authValidator, dateTime)
+                val userService = UserService(userRepository, dateTime)
+                val categoryService = CategoryService(categoryRepository, dateTime)
+                val productService = ProductService(productRepository, productValidator, dateTime)
+                val stockService = StockService(
+                    stockRepository,
+                    productRepository,
+                    warehouseRepository,
+                    userRepository,
+                    stockOperationValidator,
+                    dateTime,
+                )
+                val reportService = ReportService(reportRepository)
+
+                configureRouting(
+                    authService = authService,
+                    userService = userService,
+                    categoryService = categoryService,
+                    productService = productService,
+                    stockService = stockService,
+                    reportService = reportService,
+                )
+                ServerReadiness.setReady(true)
+                environment.log.info("Warehouse API готов (БД и маршруты подключены).")
+            } catch (e: Exception) {
+                environment.log.error(
+                    "Ошибка при старте БД/Flyway: порт слушается, /api вернёт 503 до устранения проблемы",
+                    e,
+                )
+            }
+        }
+    }
 }

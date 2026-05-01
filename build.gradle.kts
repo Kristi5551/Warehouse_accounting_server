@@ -49,6 +49,7 @@ dependencies {
 
 application {
     mainClass.set("com.example.warehouse_accounting_server.MainKt")
+    applicationDefaultJvmArgs = listOf("-Dio.ktor.development=false")
 }
 
 tasks.test {
