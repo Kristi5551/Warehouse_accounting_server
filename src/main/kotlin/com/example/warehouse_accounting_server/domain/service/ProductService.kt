@@ -2,6 +2,7 @@ package com.example.warehouse_accounting_server.domain.service
 
 import com.example.warehouse_accounting_server.config.ApiException
 import com.example.warehouse_accounting_server.data.mapper.toResponse
+import com.example.warehouse_accounting_server.domain.repository.CategoryRepository
 import com.example.warehouse_accounting_server.domain.repository.ProductRepository
 import com.example.warehouse_accounting_server.domain.validation.ProductValidator
 import com.example.warehouse_accounting_server.dto.request.product.CreateProductRequest
@@ -14,59 +15,97 @@ class ProductService(
     private val productRepository: ProductRepository,
     private val productValidator: ProductValidator,
     private val dateTime: DateTimeProvider,
+    private val categoryRepository: CategoryRepository? = null,
 ) {
-    fun list(categoryId: Long?, search: String?): List<ProductResponse> =
-        productRepository.findAll(
-            categoryId = categoryId,
-            search = search,
-            includeInactive = false,
-        ).map { it.toResponse() }
+    fun list(search: String?, categoryId: Long?, activeOnly: Boolean = true): List<ProductResponse> =
+        productRepository.findAll(search = search, categoryId = categoryId, activeOnly = activeOnly)
+            .map { it.toResponse() }
 
-    fun adminList(categoryId: Long?, search: String?): List<ProductResponse> =
-        productRepository.findAll(
-            categoryId = categoryId,
-            search = search,
-            includeInactive = true,
-        ).map { it.toResponse() }
-
-    fun getById(id: Long): ProductResponse {
-        val p = productRepository.findById(id)
-            ?: throw ApiException(HttpStatusCode.NotFound, "Product not found")
-        return p.toResponse()
-    }
+    fun getById(id: Long): ProductResponse =
+        productRepository.findById(id)?.toResponse()
+            ?: throw ApiException(HttpStatusCode.NotFound, "Товар не найден")
 
     fun create(request: CreateProductRequest): ProductResponse {
-        val p = productRepository.create(
-            article = request.article.trim(),
-            name = request.name.trim(),
+        val article = request.article.trim()
+        val name = request.name.trim()
+        val unit = request.unit.trim()
+
+        if (article.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Артикул не может быть пустым")
+        if (name.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Название не может быть пустым")
+        if (unit.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Единица измерения не может быть пустой")
+
+        if (productRepository.existsByArticle(article)) {
+            throw ApiException(HttpStatusCode.Conflict, "Товар с таким артикулом уже существует")
+        }
+
+        categoryRepository?.let { repo ->
+            val cat = repo.findById(request.categoryId)
+                ?: throw ApiException(HttpStatusCode.BadRequest, "Категория не найдена")
+            if (!cat.isActive) throw ApiException(HttpStatusCode.BadRequest, "Категория неактивна")
+        }
+
+        val purchasePrice = productValidator.parseMoney(request.purchasePrice, "purchasePrice")
+        val salePrice = productValidator.parseMoney(request.salePrice, "salePrice")
+        val minStock = productValidator.parseMoney(request.minStock, "minStock")
+
+        return productRepository.create(
+            article = article,
+            name = name,
             categoryId = request.categoryId,
-            unit = request.unit.trim(),
-            purchasePrice = productValidator.parseMoney(request.purchasePrice, "purchasePrice"),
-            salePrice = productValidator.parseMoney(request.salePrice, "salePrice"),
-            minStock = productValidator.parseMoney(request.minStock, "minStock"),
+            unit = unit,
+            purchasePrice = purchasePrice,
+            salePrice = salePrice,
+            minStock = minStock,
             now = dateTime.now(),
-        )
-        return p.toResponse()
+        ).toResponse()
     }
 
     fun update(id: Long, request: UpdateProductRequest): ProductResponse {
-        val p = productRepository.update(
-            id = id,
-            article = request.article.trim(),
-            name = request.name.trim(),
-            categoryId = request.categoryId,
-            unit = request.unit.trim(),
-            purchasePrice = productValidator.parseMoney(request.purchasePrice, "purchasePrice"),
-            salePrice = productValidator.parseMoney(request.salePrice, "salePrice"),
-            minStock = productValidator.parseMoney(request.minStock, "minStock"),
-            isActive = request.isActive,
-            now = dateTime.now(),
-        ) ?: throw ApiException(HttpStatusCode.NotFound, "Product not found")
-        return p.toResponse()
+        val article = request.article.trim()
+        val name = request.name.trim()
+        val unit = request.unit.trim()
+
+        if (article.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Артикул не может быть пустым")
+        if (name.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Название не может быть пустым")
+        if (unit.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Единица измерения не может быть пустой")
+
+        productRepository.findById(id)
+            ?: throw ApiException(HttpStatusCode.NotFound, "Товар не найден")
+
+        if (productRepository.existsByArticle(article, excludeId = id)) {
+            throw ApiException(HttpStatusCode.Conflict, "Товар с таким артикулом уже существует")
+        }
+
+        categoryRepository?.let { repo ->
+            val cat = repo.findById(request.categoryId)
+                ?: throw ApiException(HttpStatusCode.BadRequest, "Категория не найдена")
+            if (!cat.isActive) throw ApiException(HttpStatusCode.BadRequest, "Категория неактивна")
+        }
+
+        val purchasePrice = productValidator.parseMoney(request.purchasePrice, "purchasePrice")
+        val salePrice = productValidator.parseMoney(request.salePrice, "salePrice")
+        val minStock = productValidator.parseMoney(request.minStock, "minStock")
+
+        return (
+            productRepository.update(
+                id = id,
+                article = article,
+                name = name,
+                categoryId = request.categoryId,
+                unit = unit,
+                purchasePrice = purchasePrice,
+                salePrice = salePrice,
+                minStock = minStock,
+                isActive = request.isActive,
+                now = dateTime.now(),
+            ) ?: throw ApiException(HttpStatusCode.NotFound, "Товар не найден")
+            ).toResponse()
     }
 
-    fun deactivate(id: Long) {
-        val ok = productRepository.deactivate(id, dateTime.now())
-        if (!ok) throw ApiException(HttpStatusCode.NotFound, "Product not found")
+    fun deactivate(id: Long): ProductResponse {
+        productRepository.findById(id)
+            ?: throw ApiException(HttpStatusCode.NotFound, "Товар не найден")
+        return productRepository.deactivate(id, dateTime.now())?.toResponse()
+            ?: throw ApiException(HttpStatusCode.NotFound, "Товар не найден")
     }
 }

@@ -11,23 +11,39 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 class ProductRepositoryImpl : ProductRepository {
-    override fun findAll(categoryId: Long?, search: String?, includeInactive: Boolean): List<Product> = transaction {
-        val join = ProductsTable innerJoin CategoriesTable
-        join.selectAll().where {
-            val activeCond = if (includeInactive) Op.TRUE else (ProductsTable.isActive eq true)
+
+    override fun findAll(search: String?, categoryId: Long?, activeOnly: Boolean): List<Product> = transaction {
+        (ProductsTable innerJoin CategoriesTable).selectAll().where {
+            val activeCond = if (activeOnly) (ProductsTable.isActive eq true) else Op.TRUE
             val categoryCond = categoryId?.let { ProductsTable.categoryId eq it } ?: Op.TRUE
             val searchCond = search?.let { q ->
                 val p = "%${q.trim()}%"
                 (ProductsTable.name like p) or (ProductsTable.article like p)
             } ?: Op.TRUE
             activeCond and categoryCond and searchCond
-        }.map(ProductMapper::toDomain)
+        }.orderBy(ProductsTable.name).map(ProductMapper::toDomain)
     }
 
     override fun findById(id: Long): Product? = transaction {
-        (ProductsTable innerJoin CategoriesTable).selectAll().where { ProductsTable.id eq id }
+        (ProductsTable innerJoin CategoriesTable)
+            .selectAll().where { ProductsTable.id eq id }
             .singleOrNull()
             ?.let(ProductMapper::toDomain)
+    }
+
+    override fun findByArticle(article: String): Product? = transaction {
+        (ProductsTable innerJoin CategoriesTable)
+            .selectAll().where { ProductsTable.article eq article }
+            .singleOrNull()
+            ?.let(ProductMapper::toDomain)
+    }
+
+    override fun existsByArticle(article: String, excludeId: Long?): Boolean = transaction {
+        val rows = ProductsTable.selectAll()
+            .where { ProductsTable.article eq article }
+            .toList()
+        if (excludeId == null) rows.isNotEmpty()
+        else rows.any { it[ProductsTable.id].value != excludeId }
     }
 
     override fun create(
@@ -52,7 +68,8 @@ class ProductRepositoryImpl : ProductRepository {
             it[createdAt] = now
             it[updatedAt] = now
         }
-        (ProductsTable innerJoin CategoriesTable).selectAll().where { ProductsTable.id eq id }.single()
+        (ProductsTable innerJoin CategoriesTable)
+            .selectAll().where { ProductsTable.id eq id }.single()
             .let(ProductMapper::toDomain)
     }
 
@@ -82,10 +99,11 @@ class ProductRepositoryImpl : ProductRepository {
         if (n == 0) null else findById(id)
     }
 
-    override fun deactivate(id: Long, now: LocalDateTime): Boolean = transaction {
-        ProductsTable.update({ ProductsTable.id eq id }) {
+    override fun deactivate(id: Long, now: LocalDateTime): Product? = transaction {
+        val n = ProductsTable.update({ ProductsTable.id eq id }) {
             it[ProductsTable.isActive] = false
             it[updatedAt] = now
-        } > 0
+        }
+        if (n == 0) null else findById(id)
     }
 }
