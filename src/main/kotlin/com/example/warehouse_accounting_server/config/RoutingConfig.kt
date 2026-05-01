@@ -26,9 +26,6 @@ fun Application.configureRouting(
     reportService: ReportService,
 ) {
     routing {
-        get("/api/health") {
-            call.respond(mapOf("status" to "ok"))
-        }
         authRoutes(authService)
         userRoutes(userService)
         categoryRoutes(categoryService)
