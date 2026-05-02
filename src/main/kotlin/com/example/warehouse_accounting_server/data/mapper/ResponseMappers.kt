@@ -89,11 +89,13 @@ fun StockBalanceView.toBalanceResponse(): StockBalanceResponse {
     )
 }
 
-fun StockOperationItem.toItemResponse(): StockOperationItemResponse =
+fun StockOperationItem.toItemResponse(productArticle: String?, productName: String?): StockOperationItemResponse =
     StockOperationItemResponse(
         id = id,
         operationId = operationId,
         productId = productId,
+        productArticle = productArticle,
+        productName = productName,
         quantity = quantity.stripTrailingZeros().toPlainString(),
         price = price?.stripTrailingZeros()?.toPlainString(),
         reason = reason,

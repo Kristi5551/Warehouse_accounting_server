@@ -1,6 +1,6 @@
 package com.example.warehouse_accounting_server.data.repository
 
-import com.example.warehouse_accounting_server.config.ApiException
+import com.example.warehouse_accounting_server.config.ConflictException
 import com.example.warehouse_accounting_server.data.table.CategoriesTable
 import com.example.warehouse_accounting_server.data.table.ProductsTable
 import com.example.warehouse_accounting_server.data.table.StockBalancesTable
@@ -16,7 +16,6 @@ import com.example.warehouse_accounting_server.domain.model.StockStatus
 import com.example.warehouse_accounting_server.domain.repository.StockBalanceView
 import com.example.warehouse_accounting_server.domain.repository.StockHistoryFilter
 import com.example.warehouse_accounting_server.domain.repository.StockRepository
-import io.ktor.http.HttpStatusCode
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.math.BigDecimal
@@ -147,11 +146,13 @@ class StockRepositoryImpl : StockRepository {
             filter.to?.let { cond = cond and (StockOperationsTable.createdAt lessEq it) }
             cond
         }.map { it[StockOperationsTable.id].value }.distinct()
-        opIds.mapNotNull { loadOperationWithItems(it) }
+        opIds.mapNotNull { findOperationWithItems(it) }
     }
 
-    private fun loadOperationWithItems(operationId: Long): StockOperationWithItems? {
-        val row = StockOperationsTable.selectAll().where { StockOperationsTable.id eq operationId }.singleOrNull() ?: return null
+    override fun findOperationWithItems(operationId: Long): StockOperationWithItems? = transaction {
+        val row =
+            StockOperationsTable.selectAll().where { StockOperationsTable.id eq operationId }.singleOrNull()
+                ?: return@transaction null
         val op = StockOperation(
             id = row[StockOperationsTable.id].value,
             operationType = StockOperationType.valueOf(row[StockOperationsTable.operationType]),
@@ -170,7 +171,7 @@ class StockRepositoryImpl : StockRepository {
                 reason = r[StockOperationItemsTable.reason],
             )
         }
-        return StockOperationWithItems(op, items)
+        StockOperationWithItems(op, items)
     }
 
     override fun createReceipt(
@@ -184,12 +185,12 @@ class StockRepositoryImpl : StockRepository {
         now: LocalDateTime,
     ): StockOperation = transaction {
         val c = buildString {
-            if (supplier != null) append("Supplier: ").append(supplier)
-            if (comment != null) {
+            if (!supplier.isNullOrBlank()) append("Поставщик: ").append(supplier.trim())
+            if (!comment.isNullOrBlank()) {
                 if (isNotEmpty()) append("\n")
-                append(comment)
+                append(comment.trim())
             }
-        }.ifEmpty { null }
+        }.ifBlank { null }
         createMovement(
             type = StockOperationType.RECEIPT,
             warehouseId = warehouseId,
@@ -200,6 +201,7 @@ class StockRepositoryImpl : StockRepository {
             comment = c,
             userId = userId,
             now = now,
+            itemQuantityForRow = null,
             adjust = { current, delta -> current + delta },
         )
     }
@@ -226,10 +228,11 @@ class StockRepositoryImpl : StockRepository {
             adjust = { current, delta ->
                 val next = current + delta
                 if (next < BigDecimal.ZERO) {
-                    throw ApiException(HttpStatusCode.BadRequest, "Insufficient stock")
+                    throw ConflictException("Недостаточно товара на складе")
                 }
                 next
             },
+            itemQuantityForRow = null,
         )
     }
 
@@ -255,10 +258,11 @@ class StockRepositoryImpl : StockRepository {
             adjust = { current, delta ->
                 val next = current + delta
                 if (next < BigDecimal.ZERO) {
-                    throw ApiException(HttpStatusCode.BadRequest, "Insufficient stock")
+                    throw ConflictException("Недостаточно товара на складе")
                 }
                 next
             },
+            itemQuantityForRow = null,
         )
     }
 
@@ -272,16 +276,22 @@ class StockRepositoryImpl : StockRepository {
     ): StockOperation = transaction {
         val current = getBalanceQuantity(productId, warehouseId)
         val delta = actualQuantity.subtract(current)
+        fun fmt(n: BigDecimal): String = n.stripTrailingZeros().toPlainString()
+        val invLine =
+            "Инвентаризация: было ${fmt(current)}, стало ${fmt(actualQuantity)}, расхождение ${fmt(delta)}"
+        val fullComment =
+            if (comment.isNullOrBlank()) invLine else "$invLine. ${comment.trim()}"
         createMovement(
             type = StockOperationType.INVENTORY,
             warehouseId = warehouseId,
             productId = productId,
             qtyDelta = delta,
             price = null,
-            reason = null,
-            comment = comment,
+            reason = invLine,
+            comment = fullComment,
             userId = userId,
             now = now,
+            itemQuantityForRow = actualQuantity,
             adjust = { _, _ -> actualQuantity },
         )
     }
@@ -306,6 +316,7 @@ class StockRepositoryImpl : StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
+        itemQuantityForRow: BigDecimal?,
         adjust: (BigDecimal, BigDecimal) -> BigDecimal,
     ): StockOperation {
         val current = getBalanceQuantity(productId, warehouseId)
@@ -320,7 +331,7 @@ class StockRepositoryImpl : StockRepository {
         StockOperationItemsTable.insert {
             it[StockOperationItemsTable.operationId] = opId
             it[StockOperationItemsTable.productId] = productId
-            it[StockOperationItemsTable.quantity] = qtyDelta
+            it[StockOperationItemsTable.quantity] = itemQuantityForRow ?: qtyDelta
             it[StockOperationItemsTable.price] = price
             it[StockOperationItemsTable.reason] = reason
         }

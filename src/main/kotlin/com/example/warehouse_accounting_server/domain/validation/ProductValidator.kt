@@ -18,4 +18,13 @@ class ProductValidator {
         require(v > BigDecimal.ZERO) { "$field must be > 0" }
         return v
     }
+
+    /** Для инвентаризации и полей, где допустим ноль. */
+    fun parseNonNegativeQuantity(raw: String, field: String): BigDecimal {
+        val v = runCatching { BigDecimal(raw.trim()) }.getOrElse {
+            throw IllegalArgumentException("Invalid $field")
+        }
+        require(v >= BigDecimal.ZERO) { "$field must be >= 0" }
+        return v
+    }
 }
