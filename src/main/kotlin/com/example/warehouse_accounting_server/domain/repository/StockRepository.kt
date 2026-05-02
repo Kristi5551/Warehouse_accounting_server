@@ -1,7 +1,6 @@
 package com.example.warehouse_accounting_server.domain.repository
 
 import com.example.warehouse_accounting_server.domain.model.StockBalance
-import com.example.warehouse_accounting_server.domain.model.StockOperation
 import com.example.warehouse_accounting_server.domain.model.StockOperationType
 import com.example.warehouse_accounting_server.domain.model.StockOperationWithItems
 import com.example.warehouse_accounting_server.domain.model.StockStatus
@@ -35,7 +34,7 @@ interface StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-    ): StockOperation
+    ): StockOperationWithItems
 
     fun createIssue(
         warehouseId: Long,
@@ -45,7 +44,7 @@ interface StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-    ): StockOperation
+    ): StockOperationWithItems
 
     fun createWriteOff(
         warehouseId: Long,
@@ -55,7 +54,7 @@ interface StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-    ): StockOperation
+    ): StockOperationWithItems
 
     fun createInventoryAdjustment(
         warehouseId: Long,
@@ -64,5 +63,7 @@ interface StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-    ): StockOperation
+    ): StockOperationWithItems
+
+    fun findOperationWithItems(operationId: Long): StockOperationWithItems?
 }

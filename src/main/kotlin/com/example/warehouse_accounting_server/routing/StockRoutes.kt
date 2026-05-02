@@ -48,26 +48,30 @@ fun Route.stockRoutes(stockService: StockService) {
             post("/receipt") {
                 call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
                 val body = call.receive<CreateReceiptRequest>()
-                stockService.receipt(body, call.principal<JWTPrincipal>()!!.userId())
-                call.respond(HttpStatusCode.Created)
+                val userId = call.principal<JWTPrincipal>()!!.userId()
+                val created = stockService.createReceipt(userId, body)
+                call.respond(HttpStatusCode.Created, created)
             }
             post("/issue") {
                 call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
                 val body = call.receive<CreateIssueRequest>()
-                stockService.issue(body, call.principal<JWTPrincipal>()!!.userId())
-                call.respond(HttpStatusCode.Created)
+                val userId = call.principal<JWTPrincipal>()!!.userId()
+                val created = stockService.createIssue(userId, body)
+                call.respond(HttpStatusCode.Created, created)
             }
             post("/write-off") {
                 call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
                 val body = call.receive<CreateWriteOffRequest>()
-                stockService.writeOff(body, call.principal<JWTPrincipal>()!!.userId())
-                call.respond(HttpStatusCode.Created)
+                val userId = call.principal<JWTPrincipal>()!!.userId()
+                val created = stockService.createWriteOff(userId, body)
+                call.respond(HttpStatusCode.Created, created)
             }
             post("/inventory") {
                 call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
                 val body = call.receive<CreateInventoryRequest>()
-                stockService.inventory(body, call.principal<JWTPrincipal>()!!.userId())
-                call.respond(HttpStatusCode.Created)
+                val userId = call.principal<JWTPrincipal>()!!.userId()
+                val created = stockService.createInventory(userId, body)
+                call.respond(HttpStatusCode.Created, created)
             }
         }
     }

@@ -8,4 +8,7 @@ class StockOperationValidator(
     fun parseQuantity(raw: String): BigDecimal = productValidator.parseQuantity(raw, "quantity")
 
     fun parseMoney(raw: String, field: String): BigDecimal = productValidator.parseMoney(raw, field)
+
+    fun parseActualInventoryQuantity(raw: String): BigDecimal =
+        productValidator.parseNonNegativeQuantity(raw, "actualQuantity")
 }
