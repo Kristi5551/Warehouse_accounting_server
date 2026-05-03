@@ -112,7 +112,7 @@ fun Application.module() {
                     stockOperationValidator,
                     dateTime,
                 )
-                val reportService = ReportService(reportRepository)
+                val reportService = ReportService(reportRepository, stockRepository, userRepository)
 
                 configureRouting(
                     authService = authService,

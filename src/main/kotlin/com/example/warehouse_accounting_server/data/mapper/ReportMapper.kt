@@ -1,26 +1,14 @@
 package com.example.warehouse_accounting_server.data.mapper
 
+import com.example.warehouse_accounting_server.domain.model.StockOperationType
 import com.example.warehouse_accounting_server.domain.model.reports.LowStockReport
 import com.example.warehouse_accounting_server.domain.model.reports.OperationReport
-import com.example.warehouse_accounting_server.domain.model.reports.StockSummaryReport
-import com.example.warehouse_accounting_server.domain.model.reports.StockValueReport
+import com.example.warehouse_accounting_server.domain.model.reports.StockValueItem
 import com.example.warehouse_accounting_server.dto.response.report.LowStockReportResponse
 import com.example.warehouse_accounting_server.dto.response.report.OperationReportResponse
-import com.example.warehouse_accounting_server.dto.response.report.StockSummaryReportResponse
-import com.example.warehouse_accounting_server.dto.response.report.StockValueReportResponse
+import com.example.warehouse_accounting_server.dto.response.report.StockValueItemResponse
 
 object ReportMapper {
-    fun toResponse(r: StockSummaryReport): StockSummaryReportResponse =
-        StockSummaryReportResponse(
-            warehouseId = r.warehouseId,
-            warehouseName = r.warehouseName,
-            productId = r.productId,
-            productArticle = r.productArticle,
-            productName = r.productName,
-            quantity = r.quantity.stripTrailingZeros().toPlainString(),
-            unit = r.unit,
-        )
-
     fun toResponse(r: LowStockReport): LowStockReportResponse =
         LowStockReportResponse(
             productId = r.productId,
@@ -46,11 +34,16 @@ object ReportMapper {
             price = r.price?.stripTrailingZeros()?.toPlainString(),
         )
 
-    fun toResponse(r: StockValueReport): StockValueReportResponse =
-        StockValueReportResponse(
-            warehouseId = r.warehouseId,
-            warehouseName = r.warehouseName,
-            totalPurchaseValue = r.totalPurchaseValue.stripTrailingZeros().toPlainString(),
-            totalSaleValue = r.totalSaleValue.stripTrailingZeros().toPlainString(),
+    fun toResponse(r: StockValueItem): StockValueItemResponse =
+        StockValueItemResponse(
+            productId = r.productId,
+            productArticle = r.productArticle,
+            productName = r.productName,
+            quantity = r.quantity.stripTrailingZeros().toPlainString(),
+            purchasePrice = r.purchasePrice.stripTrailingZeros().toPlainString(),
+            value = r.value.stripTrailingZeros().toPlainString(),
         )
+
+    fun distinctOpsByType(lines: List<OperationReport>, type: StockOperationType): Int =
+        lines.filter { it.operationType == type }.map { it.operationId }.distinct().size
 }

@@ -4,8 +4,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class StockValueReportResponse(
-    val warehouseId: Long,
-    val warehouseName: String,
-    val totalPurchaseValue: String,
-    val totalSaleValue: String,
+    val totalValue: String,
+    val items: List<StockValueItemResponse>,
 )
