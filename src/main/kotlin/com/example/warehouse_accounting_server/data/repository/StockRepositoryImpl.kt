@@ -18,9 +18,27 @@ import com.example.warehouse_accounting_server.domain.repository.StockBalanceVie
 import com.example.warehouse_accounting_server.domain.repository.StockOperationItemView
 import com.example.warehouse_accounting_server.domain.repository.StockOperationView
 import com.example.warehouse_accounting_server.domain.repository.StockRepository
-import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.Op
+import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.minus
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.innerJoin
+import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.insertAndGetId
+import org.jetbrains.exposed.sql.or
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greater
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
+import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.sql.vendors.ForUpdateOption
+import org.jetbrains.exposed.sql.statements.jdbc.JdbcConnectionImpl
 import java.math.BigDecimal
+import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -269,18 +287,17 @@ class StockRepositoryImpl : StockRepository {
                 append(comment.trim())
             }
         }.ifBlank { null }
-        createMovement(
+        upsertAddToBalance(productId, warehouseId, quantity, now)
+        finishMovement(
             type = StockOperationType.RECEIPT,
             warehouseId = warehouseId,
             productId = productId,
-            qtyDelta = quantity,
+            lineQty = quantity,
             price = price,
             reason = null,
             comment = c,
             userId = userId,
             now = now,
-            itemQuantityForRow = null,
-            adjust = { current, delta -> current + delta },
         )
     }
 
@@ -293,24 +310,26 @@ class StockRepositoryImpl : StockRepository {
         userId: Long,
         now: LocalDateTime,
     ): StockOperationWithItems = transaction {
-        createMovement(
+        val rows =
+            tryDecrementBalance(
+                productId = productId,
+                warehouseId = warehouseId,
+                qty = quantity,
+                now = now,
+            )
+        if (rows == 0) {
+            throw ConflictException("Недостаточно товара на складе")
+        }
+        finishMovement(
             type = StockOperationType.ISSUE,
             warehouseId = warehouseId,
             productId = productId,
-            qtyDelta = quantity.negate(),
+            lineQty = quantity.negate(),
             price = null,
             reason = reason,
             comment = comment,
             userId = userId,
             now = now,
-            adjust = { current, delta ->
-                val next = current + delta
-                if (next < BigDecimal.ZERO) {
-                    throw ConflictException("Недостаточно товара на складе")
-                }
-                next
-            },
-            itemQuantityForRow = null,
         )
     }
 
@@ -323,24 +342,26 @@ class StockRepositoryImpl : StockRepository {
         userId: Long,
         now: LocalDateTime,
     ): StockOperationWithItems = transaction {
-        createMovement(
+        val rows =
+            tryDecrementBalance(
+                productId = productId,
+                warehouseId = warehouseId,
+                qty = quantity,
+                now = now,
+            )
+        if (rows == 0) {
+            throw ConflictException("Недостаточно товара на складе")
+        }
+        finishMovement(
             type = StockOperationType.WRITE_OFF,
             warehouseId = warehouseId,
             productId = productId,
-            qtyDelta = quantity.negate(),
+            lineQty = quantity.negate(),
             price = null,
             reason = reason,
             comment = comment,
             userId = userId,
             now = now,
-            adjust = { current, delta ->
-                val next = current + delta
-                if (next < BigDecimal.ZERO) {
-                    throw ConflictException("Недостаточно товара на складе")
-                }
-                next
-            },
-            itemQuantityForRow = null,
         )
     }
 
@@ -352,53 +373,125 @@ class StockRepositoryImpl : StockRepository {
         userId: Long,
         now: LocalDateTime,
     ): StockOperationWithItems = transaction {
-        val current = getBalanceQuantity(productId, warehouseId)
-        val delta = actualQuantity.subtract(current)
+        val current = lockBalanceQuantityForUpdate(productId, warehouseId)
         fun fmt(n: BigDecimal): String = n.stripTrailingZeros().toPlainString()
+        val delta = actualQuantity.subtract(current)
         val invLine =
             "Инвентаризация: было ${fmt(current)}, стало ${fmt(actualQuantity)}, расхождение ${fmt(delta)}"
         val fullComment =
             if (comment.isNullOrBlank()) invLine else "$invLine. ${comment.trim()}"
-        createMovement(
-            type = StockOperationType.INVENTORY,
-            warehouseId = warehouseId,
-            productId = productId,
-            qtyDelta = delta,
-            price = null,
-            reason = invLine,
-            comment = fullComment,
-            userId = userId,
-            now = now,
-            itemQuantityForRow = actualQuantity,
-            adjust = { _, _ -> actualQuantity },
-        )
+
+        val result =
+            finishMovement(
+                type = StockOperationType.INVENTORY,
+                warehouseId = warehouseId,
+                productId = productId,
+                lineQty = actualQuantity,
+                price = null,
+                reason = invLine,
+                comment = fullComment,
+                userId = userId,
+                now = now,
+            )
+        upsertSetBalanceQuantity(productId, warehouseId, actualQuantity, now)
+        result
     }
 
-    private fun getBalanceQuantity(productId: Long, warehouseId: Long): BigDecimal {
-        val row = StockBalancesTable.selectAll()
-            .where {
-                (StockBalancesTable.productId eq productId) and
-                    (StockBalancesTable.warehouseId eq warehouseId)
-            }
-            .singleOrNull()
-        return row?.get(StockBalancesTable.quantity) ?: BigDecimal.ZERO
+    /** PostgreSQL: одна команда upsert защищает от гонки «два прихода создают строку». */
+    private fun upsertAddToBalance(
+        productId: Long,
+        warehouseId: Long,
+        addQty: BigDecimal,
+        now: LocalDateTime,
+    ) {
+        val jdbc = (TransactionManager.current().connection as JdbcConnectionImpl).connection
+        val sql =
+            """
+            INSERT INTO stock_balances (product_id, warehouse_id, quantity, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (product_id, warehouse_id)
+            DO UPDATE SET
+                quantity = stock_balances.quantity + EXCLUDED.quantity,
+                updated_at = EXCLUDED.updated_at
+            """.trimIndent()
+        jdbc.prepareStatement(sql).use { ps ->
+            ps.setLong(1, productId)
+            ps.setLong(2, warehouseId)
+            ps.setBigDecimal(3, addQty)
+            ps.setTimestamp(4, Timestamp.valueOf(now))
+            ps.executeUpdate()
+        }
     }
 
-    private fun createMovement(
+    /** Атомарное списание: условие quantity >= qty исключает lost update и отрицательный остаток. */
+    private fun tryDecrementBalance(
+        productId: Long,
+        warehouseId: Long,
+        qty: BigDecimal,
+        now: LocalDateTime,
+    ): Int =
+        StockBalancesTable.update({
+            (StockBalancesTable.productId eq productId) and
+                (StockBalancesTable.warehouseId eq warehouseId) and
+                (StockBalancesTable.quantity greaterEq qty)
+        }) {
+            it[StockBalancesTable.quantity] = StockBalancesTable.quantity minus qty
+            it[StockBalancesTable.updatedAt] = now
+        }
+
+    private fun upsertSetBalanceQuantity(
+        productId: Long,
+        warehouseId: Long,
+        newQty: BigDecimal,
+        now: LocalDateTime,
+    ) {
+        val jdbc = (TransactionManager.current().connection as JdbcConnectionImpl).connection
+        val sql =
+            """
+            INSERT INTO stock_balances (product_id, warehouse_id, quantity, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (product_id, warehouse_id)
+            DO UPDATE SET
+                quantity = EXCLUDED.quantity,
+                updated_at = EXCLUDED.updated_at
+            """.trimIndent()
+        jdbc.prepareStatement(sql).use { ps ->
+            ps.setLong(1, productId)
+            ps.setLong(2, warehouseId)
+            ps.setBigDecimal(3, newQty)
+            ps.setTimestamp(4, Timestamp.valueOf(now))
+            ps.executeUpdate()
+        }
+    }
+
+    /**
+     * Строка остатка под блокировкой на время транзакции (если есть);
+     * иначе логический «ноль» как раньше ([getBalanceQuantity]).
+     */
+    private fun lockBalanceQuantityForUpdate(productId: Long, warehouseId: Long): BigDecimal {
+        val rows =
+            StockBalancesTable
+                .select(StockBalancesTable.quantity)
+                .where {
+                    (StockBalancesTable.productId eq productId) and
+                        (StockBalancesTable.warehouseId eq warehouseId)
+                }
+                .forUpdate(ForUpdateOption.ForUpdate)
+                .toList()
+        return rows.singleOrNull()?.get(StockBalancesTable.quantity) ?: BigDecimal.ZERO
+    }
+
+    private fun finishMovement(
         type: StockOperationType,
         warehouseId: Long,
         productId: Long,
-        qtyDelta: BigDecimal,
+        lineQty: BigDecimal,
         price: BigDecimal?,
         reason: String?,
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-        itemQuantityForRow: BigDecimal?,
-        adjust: (BigDecimal, BigDecimal) -> BigDecimal,
     ): StockOperationWithItems {
-        val current = getBalanceQuantity(productId, warehouseId)
-        val newQty = adjust(current, qtyDelta)
         val opId = StockOperationsTable.insertAndGetId {
             it[StockOperationsTable.operationType] = type.name
             it[StockOperationsTable.warehouseId] = warehouseId
@@ -406,35 +499,12 @@ class StockRepositoryImpl : StockRepository {
             it[StockOperationsTable.createdAt] = now
             it[StockOperationsTable.comment] = comment
         }
-        val lineQty = itemQuantityForRow ?: qtyDelta
         val itemId = StockOperationItemsTable.insertAndGetId {
             it[StockOperationItemsTable.operationId] = opId
             it[StockOperationItemsTable.productId] = productId
             it[StockOperationItemsTable.quantity] = lineQty
             it[StockOperationItemsTable.price] = price
             it[StockOperationItemsTable.reason] = reason
-        }
-        val existing = StockBalancesTable.selectAll()
-            .where {
-                (StockBalancesTable.productId eq productId) and
-                    (StockBalancesTable.warehouseId eq warehouseId)
-            }
-            .singleOrNull()
-        if (existing == null) {
-            StockBalancesTable.insert {
-                it[StockBalancesTable.productId] = productId
-                it[StockBalancesTable.warehouseId] = warehouseId
-                it[StockBalancesTable.quantity] = newQty
-                it[StockBalancesTable.updatedAt] = now
-            }
-        } else {
-            StockBalancesTable.update({
-                (StockBalancesTable.productId eq productId) and
-                    (StockBalancesTable.warehouseId eq warehouseId)
-            }) {
-                it[StockBalancesTable.quantity] = newQty
-                it[StockBalancesTable.updatedAt] = now
-            }
         }
         val op = StockOperation(
             id = opId.value,
