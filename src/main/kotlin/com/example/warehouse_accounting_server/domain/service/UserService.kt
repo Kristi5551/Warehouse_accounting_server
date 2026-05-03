@@ -1,6 +1,7 @@
 package com.example.warehouse_accounting_server.domain.service
 
 import com.example.warehouse_accounting_server.config.ApiException
+import com.example.warehouse_accounting_server.config.ConflictException
 import com.example.warehouse_accounting_server.config.ForbiddenException
 import com.example.warehouse_accounting_server.config.NotFoundException
 import com.example.warehouse_accounting_server.config.ValidationException
@@ -9,16 +10,22 @@ import com.example.warehouse_accounting_server.domain.model.User
 import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.model.UserStatus
 import com.example.warehouse_accounting_server.domain.repository.UserRepository
+import com.example.warehouse_accounting_server.domain.validation.AuthValidator
+import com.example.warehouse_accounting_server.dto.request.auth.RegisterRequest
 import com.example.warehouse_accounting_server.dto.request.user.ChangeUserRoleRequest
+import com.example.warehouse_accounting_server.dto.request.user.CreateAdminUserRequest
 import com.example.warehouse_accounting_server.dto.response.user.UserBriefResponse
 import com.example.warehouse_accounting_server.dto.response.user.UserResponse
 import com.example.warehouse_accounting_server.util.DateTimeProvider
+import com.example.warehouse_accounting_server.util.PasswordHasher
 import com.example.warehouse_accounting_server.util.RoleAccess
 import io.ktor.http.HttpStatusCode
 
 class UserService(
     private val userRepository: UserRepository,
     private val dateTime: DateTimeProvider,
+    private val passwordHasher: PasswordHasher,
+    private val authValidator: AuthValidator,
 ) {
     private fun requireAdminActor(actorId: Long): User {
         val actor =
@@ -83,6 +90,32 @@ class UserService(
     fun getPendingUsers(actorId: Long): List<UserResponse> {
         requireAdminActor(actorId)
         return userRepository.listPending().map { it.toResponse() }
+    }
+
+    fun createAdminUser(actorId: Long, body: CreateAdminUserRequest): UserResponse {
+        requireAdminActor(actorId)
+        authValidator.validateRegister(
+            RegisterRequest(
+                fullName = body.fullName,
+                email = body.email,
+                password = body.password,
+                requestedRole = UserRole.STOREKEEPER,
+            ),
+        )
+        val email = body.email.trim().lowercase()
+        if (userRepository.findByEmail(email) != null) {
+            throw ConflictException("Пользователь с таким email уже существует")
+        }
+        val created =
+            userRepository.create(
+                email = email,
+                passwordHash = passwordHasher.hash(body.password),
+                fullName = body.fullName.trim(),
+                role = UserRole.ADMIN,
+                status = UserStatus.ACTIVE,
+                now = dateTime.now(),
+            )
+        return created.toResponse()
     }
 
     fun approveUser(actorId: Long, targetId: Long): UserResponse {

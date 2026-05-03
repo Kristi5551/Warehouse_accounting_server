@@ -101,7 +101,7 @@ fun Application.module() {
                 InitialDataSeed.ensureStockBalances(productRepository, stockRepository, warehouseRepository, dateTime)
 
                 val authService = AuthService(userRepository, passwordHasher, jwtProvider, authValidator, dateTime)
-                val userService = UserService(userRepository, dateTime)
+                val userService = UserService(userRepository, dateTime, passwordHasher, authValidator)
                 val categoryService = CategoryService(categoryRepository, dateTime)
                 val productService = ProductService(productRepository, productValidator, dateTime, categoryRepository)
                 val stockService = StockService(
