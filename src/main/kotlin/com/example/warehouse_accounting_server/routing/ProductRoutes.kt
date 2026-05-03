@@ -2,6 +2,7 @@ package com.example.warehouse_accounting_server.routing
 
 import com.example.warehouse_accounting_server.config.ApiException
 import com.example.warehouse_accounting_server.config.requireRoles
+import com.example.warehouse_accounting_server.config.userId
 import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.service.ProductService
 import com.example.warehouse_accounting_server.dto.request.product.CreateProductRequest
@@ -25,45 +26,50 @@ fun Route.productRoutes(productService: ProductService) {
         route("/api/products") {
             // GET /api/products — ADMIN, STOREKEEPER, MANAGER
             get {
+                val actorId = call.principal<JWTPrincipal>()!!.userId()
                 call.principal<JWTPrincipal>()!!
                     .requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
                 val search = call.request.queryParameters["search"]?.trim()?.takeIf { it.isNotBlank() }
                 val categoryId = call.request.queryParameters["categoryId"]?.toLongOrNull()
                 val activeOnly = call.request.queryParameters["activeOnly"] != "false"
-                call.respond(productService.list(search, categoryId, activeOnly))
+                call.respond(productService.list(actorId, search, categoryId, activeOnly))
             }
 
             // GET /api/products/{id} — ADMIN, STOREKEEPER, MANAGER
             get("/{id}") {
+                val actorId = call.principal<JWTPrincipal>()!!.userId()
                 call.principal<JWTPrincipal>()!!
                     .requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
                 val id = call.parameters["id"]?.toLongOrNull()
                     ?: throw ApiException(HttpStatusCode.BadRequest, "Неверный идентификатор")
-                call.respond(productService.getById(id))
+                call.respond(productService.getById(actorId, id))
             }
 
             // POST /api/products — только ADMIN
             post {
+                val actorId = call.principal<JWTPrincipal>()!!.userId()
                 call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN)
                 val body = call.receive<CreateProductRequest>()
-                call.respond(HttpStatusCode.Created, productService.create(body))
+                call.respond(HttpStatusCode.Created, productService.create(actorId, body))
             }
 
             // PUT /api/products/{id} — только ADMIN
             put("/{id}") {
+                val actorId = call.principal<JWTPrincipal>()!!.userId()
                 call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN)
                 val id = call.parameters["id"]?.toLongOrNull()
                     ?: throw ApiException(HttpStatusCode.BadRequest, "Неверный идентификатор")
                 val body = call.receive<UpdateProductRequest>()
-                call.respond(productService.update(id, body))
+                call.respond(productService.update(actorId, id, body))
             }
 
             // DELETE /api/products/{id} — мягкое удаление, только ADMIN
             delete("/{id}") {
+                val actorId = call.principal<JWTPrincipal>()!!.userId()
                 call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN)
                 val id = call.parameters["id"]?.toLongOrNull()
                     ?: throw ApiException(HttpStatusCode.BadRequest, "Неверный идентификатор")
-                call.respond(productService.deactivate(id))
+                call.respond(productService.deactivate(actorId, id))
             }
         }
     }
