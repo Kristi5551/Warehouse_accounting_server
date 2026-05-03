@@ -47,7 +47,7 @@ docker ps
 
 ```
 CONTAINER ID   IMAGE                COMMAND                  PORTS                    NAMES
-xxxxxxxxxxxx   postgres:16-alpine   "docker-entrypoint.s…"   0.0.0.0:5432->5432/tcp   warehouse-postgres
+xxxxxxxxxxxx   postgres:16-alpine   "docker-entrypoint.s…"   0.0.0.0:5433->5432/tcp   warehouse-postgres
 ```
 
 **Остановить контейнер** (данные сохраняются в named volume):
