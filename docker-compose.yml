@@ -1,3 +1,6 @@
+# PostgreSQL для WarehouseAccounting. Запуск: docker compose up -d
+# Эмулятор → 10.0.2.2:8080 (Ktor). Ktor на ПК → БД: localhost:5433 (маппинг на 5432 в контейнере).
+
 services:
   postgres:
     image: postgres:16-alpine
