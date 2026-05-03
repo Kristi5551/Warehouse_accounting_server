@@ -151,9 +151,9 @@ fun Application.module() {
                 InitialDataSeed.ensureAdmin(userRepository, passwordHasher, dateTime)
                 InitialDataSeed.ensureMainWarehouse(warehouseRepository, dateTime)
 
-                val authService = AuthService(userRepository, passwordHasher, jwtProvider, authValidator, dateTime)
-                val userService = UserService(userRepository, dateTime, passwordHasher, authValidator)
                 val accessControl = AccessControlService(userRepository)
+                val authService = AuthService(userRepository, passwordHasher, jwtProvider, authValidator, dateTime, accessControl)
+                val userService = UserService(userRepository, dateTime, passwordHasher, authValidator, accessControl)
                 val categoryService = CategoryService(categoryRepository, dateTime, accessControl)
                 val productService = ProductService(productRepository, productValidator, dateTime, accessControl, categoryRepository)
                 val stockService = StockService(
@@ -163,8 +163,9 @@ fun Application.module() {
                     userRepository,
                     stockOperationValidator,
                     dateTime,
+                    accessControl,
                 )
-                val reportService = ReportService(reportRepository, stockRepository, userRepository)
+                val reportService = ReportService(reportRepository, stockRepository, accessControl)
 
                 configureRouting(
                     authService = authService,

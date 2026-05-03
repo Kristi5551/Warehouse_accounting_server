@@ -1,6 +1,5 @@
 package com.example.warehouse_accounting_server.domain.service
 
-import com.example.warehouse_accounting_server.config.ApiException
 import com.example.warehouse_accounting_server.config.NotFoundException
 import com.example.warehouse_accounting_server.config.ValidationException
 import com.example.warehouse_accounting_server.data.mapper.toBalanceResponse
@@ -11,8 +10,6 @@ import com.example.warehouse_accounting_server.domain.model.StockOperationItem
 import com.example.warehouse_accounting_server.domain.model.StockOperationType
 import com.example.warehouse_accounting_server.domain.model.StockOperationWithItems
 import com.example.warehouse_accounting_server.domain.model.StockStatus
-import com.example.warehouse_accounting_server.domain.model.UserRole
-import com.example.warehouse_accounting_server.domain.model.UserStatus
 import com.example.warehouse_accounting_server.domain.repository.ProductRepository
 import com.example.warehouse_accounting_server.domain.repository.StockRepository
 import com.example.warehouse_accounting_server.domain.repository.UserRepository
@@ -25,8 +22,6 @@ import com.example.warehouse_accounting_server.dto.request.stock.CreateWriteOffR
 import com.example.warehouse_accounting_server.dto.response.stock.StockBalanceResponse
 import com.example.warehouse_accounting_server.dto.response.stock.StockOperationResponse
 import com.example.warehouse_accounting_server.util.DateTimeProvider
-import com.example.warehouse_accounting_server.util.RoleAccess
-import io.ktor.http.HttpStatusCode
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -37,6 +32,7 @@ class StockService(
     private val userRepository: UserRepository,
     private val stockOperationValidator: StockOperationValidator,
     private val dateTime: DateTimeProvider,
+    private val accessControl: AccessControlService,
 ) {
     companion object {
         private const val STOCK_ITEM_REASON_MAX_LEN = 255
@@ -48,41 +44,13 @@ class StockService(
         categoryId: Long?,
         status: StockStatus?,
     ): List<StockBalanceResponse> {
-        ensureStockReader(currentUserId)
+        accessControl.requireStockReader(currentUserId)
         return stockRepository.getBalances(search, categoryId, status).map { it.toBalanceResponse() }
     }
 
     fun getLowStock(currentUserId: Long): List<StockBalanceResponse> {
-        ensureLowStockReader(currentUserId)
+        accessControl.requireReportReader(currentUserId)
         return stockRepository.getLowStock().map { it.toBalanceResponse() }
-    }
-
-    private fun ensureStockReader(userId: Long) {
-        val user = userRepository.findById(userId)
-            ?: throw ApiException(HttpStatusCode.Unauthorized, "Пользователь не найден")
-        if (user.status != UserStatus.ACTIVE) {
-            throw ApiException(HttpStatusCode.Forbidden, "Доступ запрещён: учётная запись не активна")
-        }
-        RoleAccess.require(user.role, UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
-    }
-
-    /** Низкие остатки — аналитика только для ADMIN и MANAGER. */
-    private fun ensureLowStockReader(userId: Long) {
-        val user = userRepository.findById(userId)
-            ?: throw ApiException(HttpStatusCode.Unauthorized, "Пользователь не найден")
-        if (user.status != UserStatus.ACTIVE) {
-            throw ApiException(HttpStatusCode.Forbidden, "Доступ запрещён: учётная запись не активна")
-        }
-        RoleAccess.require(user.role, UserRole.ADMIN, UserRole.MANAGER)
-    }
-
-    private fun ensureStockOperator(userId: Long) {
-        val user = userRepository.findById(userId)
-            ?: throw ApiException(HttpStatusCode.Unauthorized, "Пользователь не найден")
-        if (user.status != UserStatus.ACTIVE) {
-            throw ApiException(HttpStatusCode.Forbidden, "Доступ запрещён: учётная запись не активна")
-        }
-        RoleAccess.require(user.role, UserRole.ADMIN, UserRole.STOREKEEPER)
     }
 
     private fun validateActiveProduct(productId: Long) {
@@ -103,7 +71,7 @@ class StockService(
         dateFrom: LocalDate?,
         dateTo: LocalDate?,
     ): List<StockOperationResponse> {
-        ensureStockReader(currentUserId)
+        accessControl.requireStockReader(currentUserId)
         return stockRepository.findOperations(type, productId, userId, dateFrom, dateTo).map { it.toResponse() }
     }
 
@@ -115,7 +83,7 @@ class StockService(
         dateFrom: LocalDate?,
         dateTo: LocalDate?,
     ): List<StockOperationResponse> {
-        ensureStockReader(currentUserId)
+        accessControl.requireStockReader(currentUserId)
         return stockRepository.findOperations(type, productId, userId, dateFrom, dateTo).map { it.toResponse() }
     }
 
@@ -145,7 +113,7 @@ class StockService(
         enrichOperation(created.operation, created.items)
 
     fun createReceipt(currentUserId: Long, request: CreateReceiptRequest): StockOperationResponse {
-        ensureStockOperator(currentUserId)
+        accessControl.requireStockOperator(currentUserId)
         validateActiveProduct(request.productId)
         validateActiveWarehouse(request.warehouseId)
         val qty = stockOperationValidator.parseQuantity(request.quantity)
@@ -169,7 +137,7 @@ class StockService(
     }
 
     fun createIssue(currentUserId: Long, request: CreateIssueRequest): StockOperationResponse {
-        ensureStockOperator(currentUserId)
+        accessControl.requireStockOperator(currentUserId)
         validateActiveProduct(request.productId)
         validateActiveWarehouse(request.warehouseId)
         val qty = stockOperationValidator.parseQuantity(request.quantity)
@@ -186,7 +154,7 @@ class StockService(
     }
 
     fun createWriteOff(currentUserId: Long, request: CreateWriteOffRequest): StockOperationResponse {
-        ensureStockOperator(currentUserId)
+        accessControl.requireStockOperator(currentUserId)
         validateActiveProduct(request.productId)
         validateActiveWarehouse(request.warehouseId)
         val qty = stockOperationValidator.parseQuantity(request.quantity)
@@ -203,7 +171,7 @@ class StockService(
     }
 
     fun createInventory(currentUserId: Long, request: CreateInventoryRequest): StockOperationResponse {
-        ensureStockOperator(currentUserId)
+        accessControl.requireStockOperator(currentUserId)
         validateActiveProduct(request.productId)
         validateActiveWarehouse(request.warehouseId)
         val qty = stockOperationValidator.parseActualInventoryQuantity(request.actualQuantity)

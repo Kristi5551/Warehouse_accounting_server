@@ -1,6 +1,5 @@
 package com.example.warehouse_accounting_server.domain.service
 
-import com.example.warehouse_accounting_server.config.ApiException
 import com.example.warehouse_accounting_server.config.ConflictException
 import com.example.warehouse_accounting_server.config.ForbiddenException
 import com.example.warehouse_accounting_server.config.NotFoundException
@@ -18,28 +17,14 @@ import com.example.warehouse_accounting_server.dto.response.user.UserBriefRespon
 import com.example.warehouse_accounting_server.dto.response.user.UserResponse
 import com.example.warehouse_accounting_server.util.DateTimeProvider
 import com.example.warehouse_accounting_server.util.PasswordHasher
-import com.example.warehouse_accounting_server.util.RoleAccess
-import io.ktor.http.HttpStatusCode
 
 class UserService(
     private val userRepository: UserRepository,
     private val dateTime: DateTimeProvider,
     private val passwordHasher: PasswordHasher,
     private val authValidator: AuthValidator,
+    private val accessControl: AccessControlService,
 ) {
-    private fun requireAdminActor(actorId: Long): User {
-        val actor =
-            userRepository.findById(actorId)
-                ?: throw NotFoundException("Пользователь не найден")
-        if (actor.status != UserStatus.ACTIVE) {
-            throw ForbiddenException("Пользователь больше не активен")
-        }
-        if (actor.role != UserRole.ADMIN) {
-            throw ForbiddenException("Недостаточно прав")
-        }
-        return actor
-    }
-
     private fun findTargetOrThrow(id: Long): User =
         userRepository.findById(id) ?: throw NotFoundException("Пользователь не найден")
 
@@ -67,18 +52,12 @@ class UserService(
     }
 
     fun getAllUsers(actorId: Long): List<UserResponse> {
-        requireAdminActor(actorId)
+        accessControl.requireActiveAdmin(actorId)
         return userRepository.listAll().map { it.toResponse() }
     }
 
     fun listUsersForOperationFilters(actorId: Long): List<UserBriefResponse> {
-        val actor =
-            userRepository.findById(actorId)
-                ?: throw ApiException(HttpStatusCode.Unauthorized, "Пользователь не найден")
-        if (actor.status != UserStatus.ACTIVE) {
-            throw ApiException(HttpStatusCode.Forbidden, "Доступ запрещён: учётная запись не активна")
-        }
-        RoleAccess.require(actor.role, UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
+        accessControl.requireStockReader(actorId)
         return userRepository.listAll()
             .asSequence()
             .filter { it.status == UserStatus.ACTIVE }
@@ -88,12 +67,12 @@ class UserService(
     }
 
     fun getPendingUsers(actorId: Long): List<UserResponse> {
-        requireAdminActor(actorId)
+        accessControl.requireActiveAdmin(actorId)
         return userRepository.listPending().map { it.toResponse() }
     }
 
     fun createAdminUser(actorId: Long, body: CreateAdminUserRequest): UserResponse {
-        requireAdminActor(actorId)
+        accessControl.requireActiveAdmin(actorId)
         authValidator.validateRegister(
             RegisterRequest(
                 fullName = body.fullName,
@@ -119,7 +98,7 @@ class UserService(
     }
 
     fun approveUser(actorId: Long, targetId: Long): UserResponse {
-        requireAdminActor(actorId)
+        accessControl.requireActiveAdmin(actorId)
         val target = findTargetOrThrow(targetId)
         return when (target.status) {
             UserStatus.ACTIVE -> target.toResponse()
@@ -135,7 +114,7 @@ class UserService(
     }
 
     fun blockUser(actorId: Long, targetId: Long): UserResponse {
-        requireAdminActor(actorId)
+        accessControl.requireActiveAdmin(actorId)
         if (actorId == targetId) {
             throw ForbiddenException("Нельзя заблокировать собственную учетную запись")
         }
@@ -149,7 +128,7 @@ class UserService(
     }
 
     fun unblockUser(actorId: Long, targetId: Long): UserResponse {
-        requireAdminActor(actorId)
+        accessControl.requireActiveAdmin(actorId)
         val target = findTargetOrThrow(targetId)
         return when (target.status) {
             UserStatus.PENDING ->
@@ -165,7 +144,7 @@ class UserService(
     }
 
     fun changeUserRole(actorId: Long, targetId: Long, body: ChangeUserRoleRequest): UserResponse {
-        requireAdminActor(actorId)
+        accessControl.requireActiveAdmin(actorId)
         val newRole =
             runCatching { UserRole.valueOf(body.role.trim()) }.getOrElse {
                 throw ValidationException("Некорректная роль")
