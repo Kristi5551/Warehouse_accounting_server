@@ -18,14 +18,14 @@ fun Application.configureStatusPages() {
         exception<IllegalArgumentException> { call, cause ->
             call.respond(
                 HttpStatusCode.BadRequest,
-                ErrorResponse(message = cause.message ?: "Bad request", details = null),
+                ErrorResponse(message = cause.message ?: "Неверный запрос", details = null),
             )
         }
         exception<Throwable> { call, cause ->
             call.application.environment.log.error("Unhandled error", cause)
             call.respond(
                 HttpStatusCode.InternalServerError,
-                ErrorResponse(message = "Internal server error", details = null),
+                ErrorResponse(message = "Внутренняя ошибка сервера", details = null),
             )
         }
     }
