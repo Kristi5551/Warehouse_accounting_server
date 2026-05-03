@@ -33,6 +33,7 @@ fun Route.stockRoutes(stockService: StockService) {
                 call.respond(stockService.getBalances(userId, search, categoryId, status))
             }
             get("/low") {
+                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.MANAGER)
                 val userId = call.principal<JWTPrincipal>()!!.userId()
                 call.respond(stockService.getLowStock(userId))
             }

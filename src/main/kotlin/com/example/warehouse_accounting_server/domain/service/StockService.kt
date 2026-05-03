@@ -53,7 +53,7 @@ class StockService(
     }
 
     fun getLowStock(currentUserId: Long): List<StockBalanceResponse> {
-        ensureStockReader(currentUserId)
+        ensureLowStockReader(currentUserId)
         return stockRepository.getLowStock().map { it.toBalanceResponse() }
     }
 
@@ -64,6 +64,16 @@ class StockService(
             throw ApiException(HttpStatusCode.Forbidden, "Доступ запрещён: учётная запись не активна")
         }
         RoleAccess.require(user.role, UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
+    }
+
+    /** Низкие остатки — аналитика только для ADMIN и MANAGER. */
+    private fun ensureLowStockReader(userId: Long) {
+        val user = userRepository.findById(userId)
+            ?: throw ApiException(HttpStatusCode.Unauthorized, "Пользователь не найден")
+        if (user.status != UserStatus.ACTIVE) {
+            throw ApiException(HttpStatusCode.Forbidden, "Доступ запрещён: учётная запись не активна")
+        }
+        RoleAccess.require(user.role, UserRole.ADMIN, UserRole.MANAGER)
     }
 
     private fun ensureStockOperator(userId: Long) {
