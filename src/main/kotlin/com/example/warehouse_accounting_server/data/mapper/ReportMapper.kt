@@ -5,6 +5,7 @@ import com.example.warehouse_accounting_server.domain.model.reports.LowStockRepo
 import com.example.warehouse_accounting_server.domain.model.reports.OperationReport
 import com.example.warehouse_accounting_server.domain.model.reports.StockValueItem
 import com.example.warehouse_accounting_server.dto.response.report.LowStockReportResponse
+import com.example.warehouse_accounting_server.dto.response.report.OperationReportItemResponse
 import com.example.warehouse_accounting_server.dto.response.report.OperationReportResponse
 import com.example.warehouse_accounting_server.dto.response.report.StockValueItemResponse
 
@@ -20,19 +21,31 @@ object ReportMapper {
             minStock = r.minStock.stripTrailingZeros().toPlainString(),
         )
 
-    fun toResponse(r: OperationReport): OperationReportResponse =
-        OperationReportResponse(
+    fun toResponse(r: OperationReport): OperationReportResponse {
+        val first = r.items.firstOrNull()
+        val itemResponses =
+            r.items.map { line ->
+                OperationReportItemResponse(
+                    productArticle = line.productArticle,
+                    productName = line.productName,
+                    quantity = line.quantity.stripTrailingZeros().toPlainString(),
+                    price = line.price?.stripTrailingZeros()?.toPlainString(),
+                )
+            }
+        return OperationReportResponse(
             operationId = r.operationId,
             operationType = r.operationType.name,
             warehouseId = r.warehouseId,
             warehouseName = r.warehouseName,
             createdByName = r.createdByName,
             createdAt = r.createdAt.toString(),
-            productArticle = r.productArticle,
-            productName = r.productName,
-            quantity = r.quantity.stripTrailingZeros().toPlainString(),
-            price = r.price?.stripTrailingZeros()?.toPlainString(),
+            productArticle = first?.productArticle ?: "",
+            productName = first?.productName ?: "",
+            quantity = first?.quantity?.stripTrailingZeros()?.toPlainString() ?: "0",
+            price = first?.price?.stripTrailingZeros()?.toPlainString(),
+            items = itemResponses,
         )
+    }
 
     fun toResponse(r: StockValueItem): StockValueItemResponse =
         StockValueItemResponse(
@@ -44,6 +57,7 @@ object ReportMapper {
             value = r.value.stripTrailingZeros().toPlainString(),
         )
 
-    fun distinctOpsByType(lines: List<OperationReport>, type: StockOperationType): Int =
-        lines.filter { it.operationType == type }.map { it.operationId }.distinct().size
+    /** Одна запись [OperationReport] = одна операция (все строки уже сгруппированы по operationId). */
+    fun distinctOpsByType(reports: List<OperationReport>, type: StockOperationType): Int =
+        reports.count { it.operationType == type }
 }
