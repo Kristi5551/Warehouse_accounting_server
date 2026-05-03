@@ -24,7 +24,7 @@ class AuthService(
     private val dateTime: DateTimeProvider,
 ) {
     fun register(request: RegisterRequest): UserResponse {
-        authValidator.validateRegister(request)
+        authValidator.validateRegisterRequest(request)
         val email = request.email.trim().lowercase()
         if (userRepository.findByEmail(email) != null) {
             throw ConflictException("Пользователь с таким email уже существует")
