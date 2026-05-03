@@ -2,6 +2,7 @@ package com.example.warehouse_accounting_server
 
 import com.example.warehouse_accounting_server.config.AppConfig
 import com.example.warehouse_accounting_server.config.DatabaseConfig
+import com.example.warehouse_accounting_server.config.HealthService
 import com.example.warehouse_accounting_server.config.InitialDataSeed
 import com.example.warehouse_accounting_server.config.ServerReadiness
 import com.example.warehouse_accounting_server.config.configureCallLogging
@@ -27,6 +28,7 @@ import com.example.warehouse_accounting_server.domain.validation.AuthValidator
 import com.example.warehouse_accounting_server.domain.validation.ProductValidator
 import com.example.warehouse_accounting_server.domain.validation.StockOperationValidator
 import com.example.warehouse_accounting_server.dto.response.ErrorResponse
+import com.example.warehouse_accounting_server.dto.response.health.HealthResponse
 import com.example.warehouse_accounting_server.util.DateTimeProvider
 import com.example.warehouse_accounting_server.util.JwtProvider
 import com.example.warehouse_accounting_server.util.PasswordHasher
@@ -72,7 +74,58 @@ fun Application.module() {
 
     routing {
         get("/api/health") {
-            call.respond(mapOf("status" to "ok"))
+            try {
+                val appReady = ServerReadiness.isReady()
+                if (!appReady) {
+                    try {
+                        HealthService.pingDatabase()
+                        call.respond(
+                            HttpStatusCode.ServiceUnavailable,
+                            HealthResponse(
+                                status = "unavailable",
+                                message = "Сервис временно недоступен",
+                            ),
+                        )
+                    } catch (e: Exception) {
+                        call.application.environment.log.warn("Health: база данных недоступна (сервер ещё не готов)", e)
+                        call.respond(
+                            HttpStatusCode.ServiceUnavailable,
+                            HealthResponse(
+                                status = "unavailable",
+                                database = "unavailable",
+                                message = "База данных недоступна",
+                            ),
+                        )
+                    }
+                } else {
+                    try {
+                        HealthService.pingDatabase()
+                        call.respond(
+                            HttpStatusCode.OK,
+                            HealthResponse(status = "ok", database = "ok"),
+                        )
+                    } catch (e: Exception) {
+                        call.application.environment.log.error("Health: проверка БД не удалась", e)
+                        call.respond(
+                            HttpStatusCode.ServiceUnavailable,
+                            HealthResponse(
+                                status = "unavailable",
+                                database = "unavailable",
+                                message = "База данных недоступна",
+                            ),
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                call.application.environment.log.error("Health: непредвиденная ошибка", e)
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    HealthResponse(
+                        status = "unavailable",
+                        message = "Сервис временно недоступен",
+                    ),
+                )
+            }
         }
     }
 
