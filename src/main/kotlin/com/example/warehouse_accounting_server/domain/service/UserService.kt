@@ -1,5 +1,6 @@
 package com.example.warehouse_accounting_server.domain.service
 
+import com.example.warehouse_accounting_server.config.ApiException
 import com.example.warehouse_accounting_server.config.ForbiddenException
 import com.example.warehouse_accounting_server.config.NotFoundException
 import com.example.warehouse_accounting_server.config.ValidationException
@@ -9,8 +10,11 @@ import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.model.UserStatus
 import com.example.warehouse_accounting_server.domain.repository.UserRepository
 import com.example.warehouse_accounting_server.dto.request.user.ChangeUserRoleRequest
+import com.example.warehouse_accounting_server.dto.response.user.UserBriefResponse
 import com.example.warehouse_accounting_server.dto.response.user.UserResponse
 import com.example.warehouse_accounting_server.util.DateTimeProvider
+import com.example.warehouse_accounting_server.util.RoleAccess
+import io.ktor.http.HttpStatusCode
 
 class UserService(
     private val userRepository: UserRepository,
@@ -58,6 +62,22 @@ class UserService(
     fun getAllUsers(actorId: Long): List<UserResponse> {
         requireAdminActor(actorId)
         return userRepository.listAll().map { it.toResponse() }
+    }
+
+    fun listUsersForOperationFilters(actorId: Long): List<UserBriefResponse> {
+        val actor =
+            userRepository.findById(actorId)
+                ?: throw ApiException(HttpStatusCode.Unauthorized, "Пользователь не найден")
+        if (actor.status != UserStatus.ACTIVE) {
+            throw ApiException(HttpStatusCode.Forbidden, "Доступ запрещён: учётная запись не активна")
+        }
+        RoleAccess.require(actor.role, UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER)
+        return userRepository.listAll()
+            .asSequence()
+            .filter { it.status == UserStatus.ACTIVE }
+            .sortedBy { it.fullName.lowercase() }
+            .map { UserBriefResponse(id = it.id, fullName = it.fullName) }
+            .toList()
     }
 
     fun getPendingUsers(actorId: Long): List<UserResponse> {

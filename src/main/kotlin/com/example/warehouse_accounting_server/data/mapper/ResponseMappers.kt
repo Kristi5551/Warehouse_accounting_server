@@ -8,10 +8,12 @@ import com.example.warehouse_accounting_server.domain.model.StockOperationItem
 import com.example.warehouse_accounting_server.domain.model.StockStatus
 import com.example.warehouse_accounting_server.domain.model.User
 import com.example.warehouse_accounting_server.domain.repository.StockBalanceView
+import com.example.warehouse_accounting_server.domain.repository.StockOperationView
 import com.example.warehouse_accounting_server.dto.response.category.CategoryResponse
 import com.example.warehouse_accounting_server.dto.response.product.ProductResponse
 import com.example.warehouse_accounting_server.dto.response.stock.StockBalanceResponse
 import com.example.warehouse_accounting_server.dto.response.stock.StockOperationItemResponse
+import com.example.warehouse_accounting_server.dto.response.stock.StockOperationResponse
 import com.example.warehouse_accounting_server.dto.response.user.UserResponse
 import java.math.BigDecimal
 
@@ -99,4 +101,29 @@ fun StockOperationItem.toItemResponse(productArticle: String?, productName: Stri
         quantity = quantity.stripTrailingZeros().toPlainString(),
         price = price?.stripTrailingZeros()?.toPlainString(),
         reason = reason,
+    )
+
+fun StockOperationView.toResponse(): StockOperationResponse =
+    StockOperationResponse(
+        id = id,
+        operationType = operationType.name,
+        warehouseId = warehouseId,
+        warehouseName = warehouseName,
+        createdBy = createdBy,
+        createdByName = createdByName,
+        createdAt = createdAt.toString(),
+        comment = comment,
+        items =
+            items.map { iv ->
+                StockOperationItemResponse(
+                    id = iv.id,
+                    operationId = id,
+                    productId = iv.productId,
+                    productArticle = iv.productArticle,
+                    productName = iv.productName,
+                    quantity = iv.quantity.stripTrailingZeros().toPlainString(),
+                    price = iv.price?.stripTrailingZeros()?.toPlainString(),
+                    reason = iv.reason,
+                )
+            },
     )

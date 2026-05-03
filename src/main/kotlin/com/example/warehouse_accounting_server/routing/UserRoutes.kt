@@ -22,6 +22,10 @@ fun Route.userRoutes(userService: UserService) {
                 val actorId = call.principal<JWTPrincipal>()!!.userId()
                 call.respond(userService.getAllUsers(actorId))
             }
+            get("/for-operation-filters") {
+                val actorId = call.principal<JWTPrincipal>()!!.userId()
+                call.respond(userService.listUsersForOperationFilters(actorId))
+            }
             get("/pending") {
                 val actorId = call.principal<JWTPrincipal>()!!.userId()
                 call.respond(userService.getPendingUsers(actorId))
