@@ -324,7 +324,7 @@ class StockRepositoryImpl : StockRepository {
             type = StockOperationType.ISSUE,
             warehouseId = warehouseId,
             productId = productId,
-            lineQty = quantity.negate(),
+            lineQty = quantity,
             price = null,
             reason = reason,
             comment = comment,
@@ -481,6 +481,7 @@ class StockRepositoryImpl : StockRepository {
         return rows.singleOrNull()?.get(StockBalancesTable.quantity) ?: BigDecimal.ZERO
     }
 
+    /** [lineQty] — величина в строке operation_items (>= 0); направление задаёт [type]. */
     private fun finishMovement(
         type: StockOperationType,
         warehouseId: Long,
