@@ -6,6 +6,7 @@ import com.example.warehouse_accounting_server.data.table.ProductsTable
 import com.example.warehouse_accounting_server.data.table.StockBalancesTable
 import com.example.warehouse_accounting_server.data.table.StockOperationItemsTable
 import com.example.warehouse_accounting_server.data.table.StockOperationsTable
+import com.example.warehouse_accounting_server.data.table.UsersTable
 import com.example.warehouse_accounting_server.data.table.WarehousesTable
 import com.example.warehouse_accounting_server.domain.model.StockBalance
 import com.example.warehouse_accounting_server.domain.model.StockOperation
@@ -14,12 +15,15 @@ import com.example.warehouse_accounting_server.domain.model.StockOperationType
 import com.example.warehouse_accounting_server.domain.model.StockOperationWithItems
 import com.example.warehouse_accounting_server.domain.model.StockStatus
 import com.example.warehouse_accounting_server.domain.repository.StockBalanceView
-import com.example.warehouse_accounting_server.domain.repository.StockHistoryFilter
+import com.example.warehouse_accounting_server.domain.repository.StockOperationItemView
+import com.example.warehouse_accounting_server.domain.repository.StockOperationView
 import com.example.warehouse_accounting_server.domain.repository.StockRepository
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.math.BigDecimal
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 class StockRepositoryImpl : StockRepository {
 
@@ -136,23 +140,93 @@ class StockRepositoryImpl : StockRepository {
         findBalance(productId, warehouseId)!!
     }
 
-    override fun historyForProduct(productId: Long, filter: StockHistoryFilter): List<StockOperationWithItems> = transaction {
-        val join = StockOperationItemsTable innerJoin StockOperationsTable
-        val opIds = join.selectAll().where {
-            var cond = StockOperationItemsTable.productId eq productId
-            filter.operationType?.let { cond = cond and (StockOperationsTable.operationType eq it.name) }
-            filter.userId?.let { cond = cond and (StockOperationsTable.createdBy eq it) }
-            filter.from?.let { cond = cond and (StockOperationsTable.createdAt greaterEq it) }
-            filter.to?.let { cond = cond and (StockOperationsTable.createdAt lessEq it) }
-            cond
-        }.map { it[StockOperationsTable.id].value }.distinct()
-        opIds.mapNotNull { findOperationWithItems(it) }
+    override fun findOperations(
+        type: StockOperationType?,
+        productId: Long?,
+        userId: Long?,
+        dateFrom: LocalDate?,
+        dateTo: LocalDate?,
+    ): List<StockOperationView> = transaction {
+        val join =
+            StockOperationsTable
+                .innerJoin(WarehousesTable, { StockOperationsTable.warehouseId }, { WarehousesTable.id })
+                .innerJoin(UsersTable, { StockOperationsTable.createdBy }, { UsersTable.id })
+                .innerJoin(StockOperationItemsTable, { StockOperationsTable.id }, { StockOperationItemsTable.operationId })
+                .innerJoin(ProductsTable, { StockOperationItemsTable.productId }, { ProductsTable.id })
+        val rows =
+            join
+                .selectAll()
+                .where {
+                    val typeCond = type?.let { StockOperationsTable.operationType eq it.name } ?: Op.TRUE
+                    val productCond = productId?.let { StockOperationItemsTable.productId eq it } ?: Op.TRUE
+                    val userCond = userId?.let { StockOperationsTable.createdBy eq it } ?: Op.TRUE
+                    val fromCond =
+                        dateFrom?.let { d ->
+                            StockOperationsTable.createdAt greaterEq d.atStartOfDay()
+                        } ?: Op.TRUE
+                    val toCond =
+                        dateTo?.let { d ->
+                            StockOperationsTable.createdAt lessEq
+                                d.atTime(LocalTime.of(23, 59, 59, 999_999_999))
+                        } ?: Op.TRUE
+                    typeCond and productCond and userCond and fromCond and toCond
+                }
+                .orderBy(
+                    StockOperationsTable.createdAt to SortOrder.DESC,
+                    StockOperationsTable.id to SortOrder.DESC,
+                    StockOperationItemsTable.id to SortOrder.ASC,
+                )
+                .toList()
+        groupJoinRowsToOperationViews(rows)
     }
 
-    override fun findOperationWithItems(operationId: Long): StockOperationWithItems? = transaction {
+    private fun groupJoinRowsToOperationViews(rows: List<ResultRow>): List<StockOperationView> {
+        val opOrder = mutableListOf<Long>()
+        val grouped = linkedMapOf<Long, MutableList<ResultRow>>()
+        for (row in rows) {
+            val oid = row[StockOperationsTable.id].value
+            if (!grouped.containsKey(oid)) {
+                opOrder.add(oid)
+            }
+            grouped.getOrPut(oid) { mutableListOf() }.add(row)
+        }
+        return opOrder.map { oid -> buildOperationViewFromJoinRows(grouped.getValue(oid)) }
+    }
+
+    private fun buildOperationViewFromJoinRows(rows: List<ResultRow>): StockOperationView {
+        val r = rows.first()
+        val items =
+            rows.map { row ->
+                StockOperationItemView(
+                    id = row[StockOperationItemsTable.id].value,
+                    productId = row[StockOperationItemsTable.productId].value,
+                    productArticle = row[ProductsTable.article],
+                    productName = row[ProductsTable.name],
+                    quantity = row[StockOperationItemsTable.quantity],
+                    price = row[StockOperationItemsTable.price],
+                    reason = row[StockOperationItemsTable.reason],
+                )
+            }
+        return StockOperationView(
+            id = r[StockOperationsTable.id].value,
+            operationType = StockOperationType.valueOf(r[StockOperationsTable.operationType]),
+            warehouseId = r[StockOperationsTable.warehouseId].value,
+            warehouseName = r[WarehousesTable.name],
+            createdBy = r[StockOperationsTable.createdBy].value,
+            createdByName = r[UsersTable.fullName],
+            createdAt = r[StockOperationsTable.createdAt],
+            comment = r[StockOperationsTable.comment],
+            items = items,
+        )
+    }
+
+    /**
+     * Только внутри уже открытой Exposed-[transaction] (иначе — «No transaction in context»).
+     */
+    private fun readOperationWithItemsInCurrentTx(operationId: Long): StockOperationWithItems? {
         val row =
             StockOperationsTable.selectAll().where { StockOperationsTable.id eq operationId }.singleOrNull()
-                ?: return@transaction null
+                ?: return null
         val op = StockOperation(
             id = row[StockOperationsTable.id].value,
             operationType = StockOperationType.valueOf(row[StockOperationsTable.operationType]),
@@ -171,7 +245,11 @@ class StockRepositoryImpl : StockRepository {
                 reason = r[StockOperationItemsTable.reason],
             )
         }
-        StockOperationWithItems(op, items)
+        return StockOperationWithItems(op, items)
+    }
+
+    override fun findOperationWithItems(operationId: Long): StockOperationWithItems? = transaction {
+        readOperationWithItemsInCurrentTx(operationId)
     }
 
     override fun createReceipt(
@@ -183,7 +261,7 @@ class StockRepositoryImpl : StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-    ): StockOperation = transaction {
+    ): StockOperationWithItems = transaction {
         val c = buildString {
             if (!supplier.isNullOrBlank()) append("Поставщик: ").append(supplier.trim())
             if (!comment.isNullOrBlank()) {
@@ -214,7 +292,7 @@ class StockRepositoryImpl : StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-    ): StockOperation = transaction {
+    ): StockOperationWithItems = transaction {
         createMovement(
             type = StockOperationType.ISSUE,
             warehouseId = warehouseId,
@@ -244,7 +322,7 @@ class StockRepositoryImpl : StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-    ): StockOperation = transaction {
+    ): StockOperationWithItems = transaction {
         createMovement(
             type = StockOperationType.WRITE_OFF,
             warehouseId = warehouseId,
@@ -273,7 +351,7 @@ class StockRepositoryImpl : StockRepository {
         comment: String?,
         userId: Long,
         now: LocalDateTime,
-    ): StockOperation = transaction {
+    ): StockOperationWithItems = transaction {
         val current = getBalanceQuantity(productId, warehouseId)
         val delta = actualQuantity.subtract(current)
         fun fmt(n: BigDecimal): String = n.stripTrailingZeros().toPlainString()
@@ -318,7 +396,7 @@ class StockRepositoryImpl : StockRepository {
         now: LocalDateTime,
         itemQuantityForRow: BigDecimal?,
         adjust: (BigDecimal, BigDecimal) -> BigDecimal,
-    ): StockOperation {
+    ): StockOperationWithItems {
         val current = getBalanceQuantity(productId, warehouseId)
         val newQty = adjust(current, qtyDelta)
         val opId = StockOperationsTable.insertAndGetId {
@@ -328,10 +406,11 @@ class StockRepositoryImpl : StockRepository {
             it[StockOperationsTable.createdAt] = now
             it[StockOperationsTable.comment] = comment
         }
-        StockOperationItemsTable.insert {
+        val lineQty = itemQuantityForRow ?: qtyDelta
+        val itemId = StockOperationItemsTable.insertAndGetId {
             it[StockOperationItemsTable.operationId] = opId
             it[StockOperationItemsTable.productId] = productId
-            it[StockOperationItemsTable.quantity] = itemQuantityForRow ?: qtyDelta
+            it[StockOperationItemsTable.quantity] = lineQty
             it[StockOperationItemsTable.price] = price
             it[StockOperationItemsTable.reason] = reason
         }
@@ -357,14 +436,22 @@ class StockRepositoryImpl : StockRepository {
                 it[StockBalancesTable.updatedAt] = now
             }
         }
-        val opRow = StockOperationsTable.selectAll().where { StockOperationsTable.id eq opId }.single()
-        return StockOperation(
-            id = opRow[StockOperationsTable.id].value,
+        val op = StockOperation(
+            id = opId.value,
             operationType = type,
             warehouseId = warehouseId,
             createdBy = userId,
             createdAt = now,
             comment = comment,
         )
+        val item = StockOperationItem(
+            id = itemId.value,
+            operationId = opId.value,
+            productId = productId,
+            quantity = lineQty,
+            price = price,
+            reason = reason,
+        )
+        return StockOperationWithItems(op, listOf(item))
     }
 }

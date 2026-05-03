@@ -5,14 +5,15 @@ import com.example.warehouse_accounting_server.config.NotFoundException
 import com.example.warehouse_accounting_server.config.ValidationException
 import com.example.warehouse_accounting_server.data.mapper.toBalanceResponse
 import com.example.warehouse_accounting_server.data.mapper.toItemResponse
+import com.example.warehouse_accounting_server.data.mapper.toResponse
 import com.example.warehouse_accounting_server.domain.model.StockOperation
 import com.example.warehouse_accounting_server.domain.model.StockOperationItem
 import com.example.warehouse_accounting_server.domain.model.StockOperationType
+import com.example.warehouse_accounting_server.domain.model.StockOperationWithItems
 import com.example.warehouse_accounting_server.domain.model.StockStatus
 import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.model.UserStatus
 import com.example.warehouse_accounting_server.domain.repository.ProductRepository
-import com.example.warehouse_accounting_server.domain.repository.StockHistoryFilter
 import com.example.warehouse_accounting_server.domain.repository.StockRepository
 import com.example.warehouse_accounting_server.domain.repository.UserRepository
 import com.example.warehouse_accounting_server.domain.repository.WarehouseRepository
@@ -26,8 +27,8 @@ import com.example.warehouse_accounting_server.dto.response.stock.StockOperation
 import com.example.warehouse_accounting_server.util.DateTimeProvider
 import com.example.warehouse_accounting_server.util.RoleAccess
 import io.ktor.http.HttpStatusCode
+import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 class StockService(
     private val stockRepository: StockRepository,
@@ -84,22 +85,28 @@ class StockService(
         if (!w.isActive) throw ValidationException("Склад не активен")
     }
 
-    fun productHistory(
-        productId: Long,
-        operationType: StockOperationType?,
-        from: String?,
-        to: String?,
+    fun getOperations(
+        currentUserId: Long,
+        type: StockOperationType?,
+        productId: Long?,
         userId: Long?,
+        dateFrom: LocalDate?,
+        dateTo: LocalDate?,
     ): List<StockOperationResponse> {
-        val filter = StockHistoryFilter(
-            operationType = operationType,
-            productId = null,
-            from = from?.let { LocalDateTime.parse(it, DateTimeFormatter.ISO_LOCAL_DATE_TIME) },
-            to = to?.let { LocalDateTime.parse(it, DateTimeFormatter.ISO_LOCAL_DATE_TIME) },
-            userId = userId,
-        )
-        val ops = stockRepository.historyForProduct(productId, filter)
-        return ops.map { enrichOperation(it.operation, it.items) }
+        ensureStockReader(currentUserId)
+        return stockRepository.findOperations(type, productId, userId, dateFrom, dateTo).map { it.toResponse() }
+    }
+
+    fun getProductHistory(
+        currentUserId: Long,
+        productId: Long,
+        type: StockOperationType?,
+        userId: Long?,
+        dateFrom: LocalDate?,
+        dateTo: LocalDate?,
+    ): List<StockOperationResponse> {
+        ensureStockReader(currentUserId)
+        return stockRepository.findOperations(type, productId, userId, dateFrom, dateTo).map { it.toResponse() }
     }
 
     private fun enrichOperation(
@@ -124,11 +131,8 @@ class StockService(
         )
     }
 
-    private fun responseAfterCreate(op: StockOperation): StockOperationResponse {
-        val full = stockRepository.findOperationWithItems(op.id)
-        requireNotNull(full)
-        return enrichOperation(full.operation, full.items)
-    }
+    private fun responseAfterCreate(created: StockOperationWithItems): StockOperationResponse =
+        enrichOperation(created.operation, created.items)
 
     fun createReceipt(currentUserId: Long, request: CreateReceiptRequest): StockOperationResponse {
         ensureStockOperator(currentUserId)
@@ -136,7 +140,7 @@ class StockService(
         validateActiveWarehouse(request.warehouseId)
         val qty = stockOperationValidator.parseQuantity(request.quantity)
         val price = stockOperationValidator.parseMoney(request.price, "price")
-        val op = stockRepository.createReceipt(
+        val created = stockRepository.createReceipt(
             warehouseId = request.warehouseId,
             productId = request.productId,
             quantity = qty,
@@ -146,7 +150,7 @@ class StockService(
             userId = currentUserId,
             now = dateTime.now(),
         )
-        return responseAfterCreate(op)
+        return responseAfterCreate(created)
     }
 
     private fun clipItemReason(reason: String?): String? {
@@ -159,7 +163,7 @@ class StockService(
         validateActiveProduct(request.productId)
         validateActiveWarehouse(request.warehouseId)
         val qty = stockOperationValidator.parseQuantity(request.quantity)
-        val op = stockRepository.createIssue(
+        val created = stockRepository.createIssue(
             warehouseId = request.warehouseId,
             productId = request.productId,
             quantity = qty,
@@ -168,7 +172,7 @@ class StockService(
             userId = currentUserId,
             now = dateTime.now(),
         )
-        return responseAfterCreate(op)
+        return responseAfterCreate(created)
     }
 
     fun createWriteOff(currentUserId: Long, request: CreateWriteOffRequest): StockOperationResponse {
@@ -176,7 +180,7 @@ class StockService(
         validateActiveProduct(request.productId)
         validateActiveWarehouse(request.warehouseId)
         val qty = stockOperationValidator.parseQuantity(request.quantity)
-        val op = stockRepository.createWriteOff(
+        val created = stockRepository.createWriteOff(
             warehouseId = request.warehouseId,
             productId = request.productId,
             quantity = qty,
@@ -185,7 +189,7 @@ class StockService(
             userId = currentUserId,
             now = dateTime.now(),
         )
-        return responseAfterCreate(op)
+        return responseAfterCreate(created)
     }
 
     fun createInventory(currentUserId: Long, request: CreateInventoryRequest): StockOperationResponse {
@@ -193,7 +197,7 @@ class StockService(
         validateActiveProduct(request.productId)
         validateActiveWarehouse(request.warehouseId)
         val qty = stockOperationValidator.parseActualInventoryQuantity(request.actualQuantity)
-        val op = stockRepository.createInventoryAdjustment(
+        val created = stockRepository.createInventoryAdjustment(
             warehouseId = request.warehouseId,
             productId = request.productId,
             actualQuantity = qty,
@@ -201,6 +205,6 @@ class StockService(
             userId = currentUserId,
             now = dateTime.now(),
         )
-        return responseAfterCreate(op)
+        return responseAfterCreate(created)
     }
 }

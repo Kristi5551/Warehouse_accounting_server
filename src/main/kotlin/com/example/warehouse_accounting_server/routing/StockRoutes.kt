@@ -3,7 +3,6 @@ package com.example.warehouse_accounting_server.routing
 import com.example.warehouse_accounting_server.config.requireRoles
 import com.example.warehouse_accounting_server.config.userId
 import com.example.warehouse_accounting_server.config.userRole
-import com.example.warehouse_accounting_server.domain.model.StockOperationType
 import com.example.warehouse_accounting_server.domain.model.StockStatus
 import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.service.StockService
@@ -38,12 +37,17 @@ fun Route.stockRoutes(stockService: StockService) {
                 call.respond(stockService.getLowStock(userId))
             }
             get("/products/{id}/history") {
+                val principalUserId = call.principal<JWTPrincipal>()!!.userId()
                 val id = call.parameters["id"]!!.toLong()
-                val type = call.request.queryParameters["operationType"]?.let { StockOperationType.valueOf(it) }
-                val from = call.request.queryParameters["from"]
-                val to = call.request.queryParameters["to"]
-                val userId = call.request.queryParameters["userId"]?.toLongOrNull()
-                call.respond(stockService.productHistory(id, type, from, to, userId))
+                val type =
+                    parseOperationTypeQuery(call.request.queryParameters["type"])
+                        ?: parseOperationTypeQuery(call.request.queryParameters["operationType"])
+                val filterUserId = call.request.queryParameters["userId"]?.toLongOrNull()
+                val dateFrom = parseDateQuery(call.request.queryParameters["dateFrom"])
+                val dateTo = parseDateQuery(call.request.queryParameters["dateTo"])
+                call.respond(
+                    stockService.getProductHistory(principalUserId, id, type, filterUserId, dateFrom, dateTo),
+                )
             }
             post("/receipt") {
                 call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)

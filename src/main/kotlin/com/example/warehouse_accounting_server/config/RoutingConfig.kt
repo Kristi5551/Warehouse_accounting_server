@@ -8,6 +8,7 @@ import com.example.warehouse_accounting_server.domain.service.StockService
 import com.example.warehouse_accounting_server.domain.service.UserService
 import com.example.warehouse_accounting_server.routing.authRoutes
 import com.example.warehouse_accounting_server.routing.categoryRoutes
+import com.example.warehouse_accounting_server.routing.operationRoutes
 import com.example.warehouse_accounting_server.routing.productRoutes
 import com.example.warehouse_accounting_server.routing.reportRoutes
 import com.example.warehouse_accounting_server.routing.stockRoutes
@@ -31,6 +32,7 @@ fun Application.configureRouting(
         categoryRoutes(categoryService)
         productRoutes(productService)
         stockRoutes(stockService)
+        operationRoutes(stockService)
         reportRoutes(reportService)
     }
 }
