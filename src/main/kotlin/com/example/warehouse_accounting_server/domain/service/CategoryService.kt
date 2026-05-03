@@ -12,15 +12,21 @@ import io.ktor.http.HttpStatusCode
 class CategoryService(
     private val categoryRepository: CategoryRepository,
     private val dateTime: DateTimeProvider,
+    private val accessControl: AccessControlService,
 ) {
-    fun list(activeOnly: Boolean = true): List<CategoryResponse> =
-        categoryRepository.findAll(includeInactive = !activeOnly).map { it.toResponse() }
+    fun list(currentUserId: Long, activeOnly: Boolean = true): List<CategoryResponse> {
+        accessControl.requireActiveUser(currentUserId)
+        return categoryRepository.findAll(includeInactive = !activeOnly).map { it.toResponse() }
+    }
 
-    fun getById(id: Long): CategoryResponse =
-        categoryRepository.findById(id)?.toResponse()
+    fun getById(currentUserId: Long, id: Long): CategoryResponse {
+        accessControl.requireActiveUser(currentUserId)
+        return categoryRepository.findById(id)?.toResponse()
             ?: throw ApiException(HttpStatusCode.NotFound, "Категория не найдена")
+    }
 
-    fun create(request: CreateCategoryRequest): CategoryResponse {
+    fun create(currentUserId: Long, request: CreateCategoryRequest): CategoryResponse {
+        accessControl.requireActiveAdmin(currentUserId)
         val name = request.name.trim()
         if (name.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Название категории не может быть пустым")
         if (categoryRepository.existsByName(name)) {
@@ -33,7 +39,8 @@ class CategoryService(
         ).toResponse()
     }
 
-    fun update(id: Long, request: UpdateCategoryRequest): CategoryResponse {
+    fun update(currentUserId: Long, id: Long, request: UpdateCategoryRequest): CategoryResponse {
+        accessControl.requireActiveAdmin(currentUserId)
         val name = request.name.trim()
         if (name.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Название категории не может быть пустым")
         categoryRepository.findById(id)
@@ -52,7 +59,8 @@ class CategoryService(
             ).toResponse()
     }
 
-    fun deactivate(id: Long): CategoryResponse {
+    fun deactivate(currentUserId: Long, id: Long): CategoryResponse {
+        accessControl.requireActiveAdmin(currentUserId)
         categoryRepository.findById(id)
             ?: throw ApiException(HttpStatusCode.NotFound, "Категория не найдена")
         return categoryRepository.deactivate(id, dateTime.now())?.toResponse()

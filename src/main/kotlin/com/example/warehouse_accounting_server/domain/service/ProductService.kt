@@ -15,17 +15,23 @@ class ProductService(
     private val productRepository: ProductRepository,
     private val productValidator: ProductValidator,
     private val dateTime: DateTimeProvider,
+    private val accessControl: AccessControlService,
     private val categoryRepository: CategoryRepository? = null,
 ) {
-    fun list(search: String?, categoryId: Long?, activeOnly: Boolean = true): List<ProductResponse> =
-        productRepository.findAll(search = search, categoryId = categoryId, activeOnly = activeOnly)
+    fun list(currentUserId: Long, search: String?, categoryId: Long?, activeOnly: Boolean = true): List<ProductResponse> {
+        accessControl.requireActiveUser(currentUserId)
+        return productRepository.findAll(search = search, categoryId = categoryId, activeOnly = activeOnly)
             .map { it.toResponse() }
+    }
 
-    fun getById(id: Long): ProductResponse =
-        productRepository.findById(id)?.toResponse()
+    fun getById(currentUserId: Long, id: Long): ProductResponse {
+        accessControl.requireActiveUser(currentUserId)
+        return productRepository.findById(id)?.toResponse()
             ?: throw ApiException(HttpStatusCode.NotFound, "Товар не найден")
+    }
 
-    fun create(request: CreateProductRequest): ProductResponse {
+    fun create(currentUserId: Long, request: CreateProductRequest): ProductResponse {
+        accessControl.requireActiveAdmin(currentUserId)
         val article = request.article.trim()
         val name = request.name.trim()
         val unit = request.unit.trim()
@@ -60,7 +66,8 @@ class ProductService(
         ).toResponse()
     }
 
-    fun update(id: Long, request: UpdateProductRequest): ProductResponse {
+    fun update(currentUserId: Long, id: Long, request: UpdateProductRequest): ProductResponse {
+        accessControl.requireActiveAdmin(currentUserId)
         val article = request.article.trim()
         val name = request.name.trim()
         val unit = request.unit.trim()
@@ -102,7 +109,8 @@ class ProductService(
             ).toResponse()
     }
 
-    fun deactivate(id: Long): ProductResponse {
+    fun deactivate(currentUserId: Long, id: Long): ProductResponse {
+        accessControl.requireActiveAdmin(currentUserId)
         productRepository.findById(id)
             ?: throw ApiException(HttpStatusCode.NotFound, "Товар не найден")
         return productRepository.deactivate(id, dateTime.now())?.toResponse()

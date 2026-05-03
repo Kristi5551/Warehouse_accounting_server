@@ -16,6 +16,7 @@ import com.example.warehouse_accounting_server.data.repository.ReportRepositoryI
 import com.example.warehouse_accounting_server.data.repository.StockRepositoryImpl
 import com.example.warehouse_accounting_server.data.repository.UserRepositoryImpl
 import com.example.warehouse_accounting_server.data.repository.WarehouseRepositoryImpl
+import com.example.warehouse_accounting_server.domain.service.AccessControlService
 import com.example.warehouse_accounting_server.domain.service.AuthService
 import com.example.warehouse_accounting_server.domain.service.CategoryService
 import com.example.warehouse_accounting_server.domain.service.ProductService
@@ -99,8 +100,9 @@ fun Application.module() {
 
                 val authService = AuthService(userRepository, passwordHasher, jwtProvider, authValidator, dateTime)
                 val userService = UserService(userRepository, dateTime, passwordHasher, authValidator)
-                val categoryService = CategoryService(categoryRepository, dateTime)
-                val productService = ProductService(productRepository, productValidator, dateTime, categoryRepository)
+                val accessControl = AccessControlService(userRepository)
+                val categoryService = CategoryService(categoryRepository, dateTime, accessControl)
+                val productService = ProductService(productRepository, productValidator, dateTime, accessControl, categoryRepository)
                 val stockService = StockService(
                     stockRepository,
                     productRepository,
