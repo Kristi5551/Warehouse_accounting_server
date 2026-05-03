@@ -36,9 +36,9 @@ class ProductService(
         val name = request.name.trim()
         val unit = request.unit.trim()
 
-        if (article.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Артикул не может быть пустым")
-        if (name.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Название не может быть пустым")
-        if (unit.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Единица измерения не может быть пустой")
+        if (article.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Артикул обязателен")
+        if (name.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Название товара обязательно")
+        if (unit.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Единица измерения обязательна")
 
         if (productRepository.existsByArticle(article)) {
             throw ApiException(HttpStatusCode.Conflict, "Товар с таким артикулом уже существует")
@@ -72,9 +72,9 @@ class ProductService(
         val name = request.name.trim()
         val unit = request.unit.trim()
 
-        if (article.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Артикул не может быть пустым")
-        if (name.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Название не может быть пустым")
-        if (unit.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Единица измерения не может быть пустой")
+        if (article.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Артикул обязателен")
+        if (name.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Название товара обязательно")
+        if (unit.isBlank()) throw ApiException(HttpStatusCode.BadRequest, "Единица измерения обязательна")
 
         productRepository.findById(id)
             ?: throw ApiException(HttpStatusCode.NotFound, "Товар не найден")

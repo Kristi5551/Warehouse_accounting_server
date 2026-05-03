@@ -42,13 +42,13 @@ fun Application.configureSecurity(
 
 fun JWTPrincipal.userId(): Long =
     payload.getClaim(JwtProvider.CLAIM_USER_ID).asLong()
-        ?: throw ApiException(HttpStatusCode.Unauthorized, "Invalid token")
+        ?: throw ApiException(HttpStatusCode.Unauthorized, "Недействительный токен")
 
 fun JWTPrincipal.userRole(): UserRole {
     val raw = payload.getClaim(JwtProvider.CLAIM_ROLE).asString()
-        ?: throw ApiException(HttpStatusCode.Unauthorized, "Invalid token")
+        ?: throw ApiException(HttpStatusCode.Unauthorized, "Недействительный токен")
     return runCatching { UserRole.valueOf(raw) }.getOrElse {
-        throw ApiException(HttpStatusCode.Unauthorized, "Invalid token")
+        throw ApiException(HttpStatusCode.Unauthorized, "Недействительный токен")
     }
 }
 
