@@ -2,7 +2,6 @@ package com.example.warehouse_accounting_server.domain.service
 
 import com.example.warehouse_accounting_server.config.ConflictException
 import com.example.warehouse_accounting_server.config.ForbiddenException
-import com.example.warehouse_accounting_server.config.NotFoundException
 import com.example.warehouse_accounting_server.config.UnauthorizedException
 import com.example.warehouse_accounting_server.data.mapper.toResponse
 import com.example.warehouse_accounting_server.domain.model.UserStatus
@@ -22,6 +21,7 @@ class AuthService(
     private val jwtProvider: JwtProvider,
     private val authValidator: AuthValidator,
     private val dateTime: DateTimeProvider,
+    private val accessControl: AccessControlService,
 ) {
     fun register(request: RegisterRequest): UserResponse {
         authValidator.validateRegisterRequest(request)
@@ -62,11 +62,7 @@ class AuthService(
     }
 
     fun getCurrentUser(userId: Long): UserResponse {
-        val user = userRepository.findById(userId)
-            ?: throw NotFoundException("Пользователь не найден")
-        if (user.status != UserStatus.ACTIVE) {
-            throw ForbiddenException("Пользователь больше не активен")
-        }
+        val user = accessControl.requireActiveUser(userId)
         return user.toResponse()
     }
 }
