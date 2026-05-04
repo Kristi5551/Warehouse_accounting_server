@@ -28,6 +28,10 @@ fun Route.authRoutes(authService: AuthService) {
             call.respond(authService.login(body))
         }
         authenticate("auth-jwt") {
+            /**
+             * Текущий пользователь берётся только из БД ([AuthService.getCurrentUser] → [AccessControlService.requireActiveUser]);
+             * валидный JWT лишь задаёт идентификатор пользователя в claim userId.
+             */
             get("/me") {
                 val principal = call.principal<JWTPrincipal>()!!
                 call.respond(authService.getCurrentUser(principal.userId()))

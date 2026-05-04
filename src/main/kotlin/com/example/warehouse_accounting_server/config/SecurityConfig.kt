@@ -57,9 +57,13 @@ fun JWTPrincipal.userRole(): UserRole {
 }
 
 /**
- * Проверка роли **по JWT-claim**, не по БД. Оставлено для редких сценариев; в маршрутах API
- * доступ по роли выполняется в сервисах через [com.example.warehouse_accounting_server.domain.service.AccessControlService].
+ * Проверка роли **по JWT-claim** (устаревший вспомогательный API). Не вызывать из маршрутов —
+ * доступ по роли выполняется в сервисах через [AccessControlService] по актуальной записи в БД.
  */
+@Deprecated(
+    message = "Не использовать в маршрутах. Права — AccessControlService + userId из JWT.",
+    level = DeprecationLevel.WARNING,
+)
 fun JWTPrincipal.requireRoles(vararg allowed: UserRole): UserRole {
     val role = userRole()
     RoleAccess.require(role, *allowed)
