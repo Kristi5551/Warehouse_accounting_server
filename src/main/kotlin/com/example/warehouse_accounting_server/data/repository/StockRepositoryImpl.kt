@@ -44,6 +44,18 @@ import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+/**
+ * Остатки и складские операции: одна SQL-транзакция на операцию, без частичных записей при откате.
+ *
+ * **Расход / списание:** атомарный `UPDATE … SET quantity = quantity - :qty WHERE quantity >= :qty`;
+ * при `0` обновлённых строк — [ConflictException] до вставки `stock_operations` (защита от lost update
+ * и двойного расхода при гонке). Дополнительно CHECK `quantity >= 0` (V10).
+ *
+ * **Приход:** `INSERT … ON CONFLICT DO UPDATE` увеличивает остаток одной командой.
+ *
+ * **Инвентаризация:** гарантированная строка остатка, `SELECT … FOR UPDATE`, выставление факта,
+ * затем запись операции (остаток обновляется до audit-строки в той же транзакции).
+ */
 class StockRepositoryImpl : StockRepository {
 
     private val balanceJoin =
@@ -383,20 +395,18 @@ class StockRepositoryImpl : StockRepository {
         val fullComment =
             if (comment.isNullOrBlank()) invLine else "$invLine. ${comment.trim()}"
 
-        val result =
-            finishMovement(
-                type = StockOperationType.INVENTORY,
-                warehouseId = warehouseId,
-                productId = productId,
-                lineQty = actualQuantity,
-                price = null,
-                reason = invLine,
-                comment = fullComment,
-                userId = userId,
-                now = now,
-            )
         upsertSetBalanceQuantity(productId, warehouseId, actualQuantity, now)
-        result
+        finishMovement(
+            type = StockOperationType.INVENTORY,
+            warehouseId = warehouseId,
+            productId = productId,
+            lineQty = actualQuantity,
+            price = null,
+            reason = invLine,
+            comment = fullComment,
+            userId = userId,
+            now = now,
+        )
     }
 
     /**
@@ -415,8 +425,7 @@ class StockRepositoryImpl : StockRepository {
         jdbc.prepareStatement(sql).use { ps ->
             ps.setLong(1, productId)
             ps.setLong(2, warehouseId)
-            ps.setBigDecimal(3, BigDecimal.ZERO)
-            ps.setTimestamp(4, Timestamp.valueOf(now))
+            ps.setTimestamp(3, Timestamp.valueOf(now))
             ps.executeUpdate()
         }
     }

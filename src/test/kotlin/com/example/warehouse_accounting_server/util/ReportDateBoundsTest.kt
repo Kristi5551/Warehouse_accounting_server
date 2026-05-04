@@ -9,6 +9,13 @@ import kotlin.test.assertNull
 class ReportDateBoundsTest {
 
     @Test
+    fun `no date bounds — unrestricted range for SQL`() {
+        val b = ReportDateBounds.from(null, null)
+        assertNull(b.fromInclusive)
+        assertNull(b.toExclusive)
+    }
+
+    @Test
     fun `single calendar day is fully included via exclusive next midnight`() {
         val d = LocalDate.of(2026, 5, 1)
         val b = ReportDateBounds.from(d, d)
