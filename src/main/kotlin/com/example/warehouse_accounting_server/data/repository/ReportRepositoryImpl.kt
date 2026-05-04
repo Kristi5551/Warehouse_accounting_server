@@ -12,17 +12,18 @@ import com.example.warehouse_accounting_server.domain.model.reports.OperationRep
 import com.example.warehouse_accounting_server.domain.model.reports.OperationReportItemLine
 import com.example.warehouse_accounting_server.domain.model.reports.StockValueItem
 import com.example.warehouse_accounting_server.domain.repository.ReportRepository
+import com.example.warehouse_accounting_server.util.ReportDateBounds
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.innerJoin
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.LocalDate
-import java.time.LocalTime
 
 class ReportRepositoryImpl : ReportRepository {
     override fun lowStockReport(warehouseId: Long?): List<LowStockReport> = transaction {
@@ -61,14 +62,11 @@ class ReportRepositoryImpl : ReportRepository {
             join
                 .selectAll()
                 .where {
+                    val bounds = ReportDateBounds.from(dateFrom, dateTo)
                     val fromCond =
-                        dateFrom?.let { d ->
-                            StockOperationsTable.createdAt greaterEq d.atStartOfDay()
-                        } ?: Op.TRUE
+                        bounds.fromInclusive?.let { StockOperationsTable.createdAt greaterEq it } ?: Op.TRUE
                     val toCond =
-                        dateTo?.let { d ->
-                            StockOperationsTable.createdAt lessEq d.atTime(LocalTime.of(23, 59, 59, 999_999_999))
-                        } ?: Op.TRUE
+                        bounds.toExclusive?.let { StockOperationsTable.createdAt less it } ?: Op.TRUE
                     fromCond and toCond
                 }
                 .orderBy(

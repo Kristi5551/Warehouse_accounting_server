@@ -18,6 +18,7 @@ import com.example.warehouse_accounting_server.domain.repository.StockBalanceVie
 import com.example.warehouse_accounting_server.domain.repository.StockOperationItemView
 import com.example.warehouse_accounting_server.domain.repository.StockOperationView
 import com.example.warehouse_accounting_server.domain.repository.StockRepository
+import com.example.warehouse_accounting_server.util.ReportDateBounds
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
@@ -31,6 +32,7 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greater
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -41,7 +43,6 @@ import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 
 class StockRepositoryImpl : StockRepository {
 
@@ -178,14 +179,14 @@ class StockRepositoryImpl : StockRepository {
                     val typeCond = type?.let { StockOperationsTable.operationType eq it.name } ?: Op.TRUE
                     val productCond = productId?.let { StockOperationItemsTable.productId eq it } ?: Op.TRUE
                     val userCond = userId?.let { StockOperationsTable.createdBy eq it } ?: Op.TRUE
+                    val bounds = ReportDateBounds.from(dateFrom, dateTo)
                     val fromCond =
-                        dateFrom?.let { d ->
-                            StockOperationsTable.createdAt greaterEq d.atStartOfDay()
+                        bounds.fromInclusive?.let {
+                            StockOperationsTable.createdAt greaterEq it
                         } ?: Op.TRUE
                     val toCond =
-                        dateTo?.let { d ->
-                            StockOperationsTable.createdAt lessEq
-                                d.atTime(LocalTime.of(23, 59, 59, 999_999_999))
+                        bounds.toExclusive?.let {
+                            StockOperationsTable.createdAt less it
                         } ?: Op.TRUE
                     typeCond and productCond and userCond and fromCond and toCond
                 }
@@ -373,6 +374,7 @@ class StockRepositoryImpl : StockRepository {
         userId: Long,
         now: LocalDateTime,
     ): StockOperationWithItems = transaction {
+        ensureBalanceRowExistsForInventory(productId, warehouseId, now)
         val current = lockBalanceQuantityForUpdate(productId, warehouseId)
         fun fmt(n: BigDecimal): String = n.stripTrailingZeros().toPlainString()
         val delta = actualQuantity.subtract(current)
@@ -395,6 +397,28 @@ class StockRepositoryImpl : StockRepository {
             )
         upsertSetBalanceQuantity(productId, warehouseId, actualQuantity, now)
         result
+    }
+
+    /**
+     * Перед `SELECT … FOR UPDATE` для инвентаризации гарантирует наличие строки остатка (0 шт.):
+     * если строки нет, `FOR UPDATE` не блокирует «пустое место», и две конкурентные инвентаризации
+     * могли бы гоняться без сериализации на одной паре product/warehouse.
+     */
+    private fun ensureBalanceRowExistsForInventory(productId: Long, warehouseId: Long, now: LocalDateTime) {
+        val jdbc = (TransactionManager.current().connection as JdbcConnectionImpl).connection
+        val sql =
+            """
+            INSERT INTO stock_balances (product_id, warehouse_id, quantity, updated_at)
+            VALUES (?, ?, 0, ?)
+            ON CONFLICT (product_id, warehouse_id) DO NOTHING
+            """.trimIndent()
+        jdbc.prepareStatement(sql).use { ps ->
+            ps.setLong(1, productId)
+            ps.setLong(2, warehouseId)
+            ps.setBigDecimal(3, BigDecimal.ZERO)
+            ps.setTimestamp(4, Timestamp.valueOf(now))
+            ps.executeUpdate()
+        }
     }
 
     /** PostgreSQL: одна команда upsert защищает от гонки «два прихода создают строку». */
@@ -423,7 +447,11 @@ class StockRepositoryImpl : StockRepository {
         }
     }
 
-    /** Атомарное списание: условие quantity >= qty исключает lost update и отрицательный остаток. */
+    /**
+     * Атомарное списание (расход / списание): одна SQL-операция `UPDATE … WHERE quantity >= :qty`.
+     * Две конкурентные транзакции не могут обе списать больше фактического остатка:
+     * у второй `UPDATE` снимет 0 строк → ConflictException до записи операции. Дополнительно V10 CHECK (quantity >= 0).
+     */
     private fun tryDecrementBalance(
         productId: Long,
         warehouseId: Long,
