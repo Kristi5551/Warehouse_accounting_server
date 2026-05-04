@@ -62,6 +62,7 @@ class AuthService(
     }
 
     fun getCurrentUser(userId: Long): UserResponse {
+        // Только БД: неактивен / блок / pending → 403 с понятным текстом для клиента.
         val user = accessControl.requireActiveUser(userId)
         return user.toResponse()
     }

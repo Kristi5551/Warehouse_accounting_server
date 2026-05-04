@@ -1,10 +1,7 @@
 package com.example.warehouse_accounting_server.routing
 
-import com.example.warehouse_accounting_server.config.requireRoles
 import com.example.warehouse_accounting_server.config.userId
-import com.example.warehouse_accounting_server.config.userRole
 import com.example.warehouse_accounting_server.domain.model.StockStatus
-import com.example.warehouse_accounting_server.domain.model.UserRole
 import com.example.warehouse_accounting_server.domain.service.StockService
 import com.example.warehouse_accounting_server.dto.request.stock.CreateInventoryRequest
 import com.example.warehouse_accounting_server.dto.request.stock.CreateIssueRequest
@@ -33,7 +30,6 @@ fun Route.stockRoutes(stockService: StockService) {
                 call.respond(stockService.getBalances(userId, search, categoryId, status))
             }
             get("/low") {
-                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.MANAGER)
                 val userId = call.principal<JWTPrincipal>()!!.userId()
                 call.respond(stockService.getLowStock(userId))
             }
@@ -51,28 +47,24 @@ fun Route.stockRoutes(stockService: StockService) {
                 )
             }
             post("/receipt") {
-                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
                 val body = call.receive<CreateReceiptRequest>()
                 val userId = call.principal<JWTPrincipal>()!!.userId()
                 val created = stockService.createReceipt(userId, body)
                 call.respond(HttpStatusCode.Created, created)
             }
             post("/issue") {
-                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
                 val body = call.receive<CreateIssueRequest>()
                 val userId = call.principal<JWTPrincipal>()!!.userId()
                 val created = stockService.createIssue(userId, body)
                 call.respond(HttpStatusCode.Created, created)
             }
             post("/write-off") {
-                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
                 val body = call.receive<CreateWriteOffRequest>()
                 val userId = call.principal<JWTPrincipal>()!!.userId()
                 val created = stockService.createWriteOff(userId, body)
                 call.respond(HttpStatusCode.Created, created)
             }
             post("/inventory") {
-                call.principal<JWTPrincipal>()!!.requireRoles(UserRole.ADMIN, UserRole.STOREKEEPER)
                 val body = call.receive<CreateInventoryRequest>()
                 val userId = call.principal<JWTPrincipal>()!!.userId()
                 val created = stockService.createInventory(userId, body)

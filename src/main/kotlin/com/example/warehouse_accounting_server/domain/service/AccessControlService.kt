@@ -10,7 +10,11 @@ import com.example.warehouse_accounting_server.util.RoleAccess
 
 /**
  * Проверки актуального пользователя в БД (не JWT).
- * JWT даёт только [userId]; финальные права — по текущей записи в БД.
+ *
+ * **Политика RBAC:** валидный JWT подтверждает только идентичность ([User.id] в claim `userId`).
+ * Claim `role` в JWT — справочный для клиента; **иголка на доступ** — текущая запись в БД
+ * (статус ACTIVE и фактическая роль), чтобы не доверять устаревшему токену после блокировки
+ * или смены роли.
  */
 class AccessControlService(
     private val userRepository: UserRepository,
@@ -19,10 +23,11 @@ class AccessControlService(
         val user =
             userRepository.findById(userId)
                 ?: throw NotFoundException("Пользователь не найден")
-        if (user.status != UserStatus.ACTIVE) {
-            throw ForbiddenException("Пользователь больше не активен")
+        when (user.status) {
+            UserStatus.ACTIVE -> return user
+            UserStatus.BLOCKED -> throw ForbiddenException("Аккаунт заблокирован")
+            UserStatus.PENDING -> throw ForbiddenException("Аккаунт ожидает подтверждения администратором")
         }
-        return user
     }
 
     fun requireActiveAdmin(userId: Long): User {
