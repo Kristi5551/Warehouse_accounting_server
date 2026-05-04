@@ -14,13 +14,19 @@ import com.example.warehouse_accounting_server.util.PasswordHasher
  *
  * Демо-категории, товары и остатки из коробки поставляет миграция V8 (легаси, с литеральными id — файл V8 не редактировать;
  * новые сиды — по естественным ключам, см. MIGRATIONS_NOTES.md в корне модуля Warehouse_accounting_server.
+ *
+ * **Пароль демо-администратора:** значение по умолчанию `admin123` — **только для локального сида**.
+ * В production не используйте этот пароль; задайте `ADMIN_PASSWORD` в окружении или отключайте/не полагайтесь на этот сид.
  */
 object InitialDataSeed {
 
     const val MAIN_WAREHOUSE_NAME = "Основной склад"
 
     private const val ADMIN_EMAIL = "admin@warehouse.local"
-    private const val ADMIN_PASSWORD = "admin123"
+
+    /** Только для локальной разработки; переопределяется переменной окружения `ADMIN_PASSWORD`. */
+    private fun localDemoAdminPassword(): String =
+        System.getenv("ADMIN_PASSWORD")?.trim()?.takeIf { it.isNotEmpty() } ?: "admin123"
 
     /**
      * Создаёт начального администратора, если пользователь с таким email ещё не существует.
@@ -39,7 +45,7 @@ object InitialDataSeed {
         if (userRepository.findByEmail(ADMIN_EMAIL) != null) return
         userRepository.create(
             email = ADMIN_EMAIL,
-            passwordHash = passwordHasher.hash(ADMIN_PASSWORD),
+            passwordHash = passwordHasher.hash(localDemoAdminPassword()),
             fullName = "Администратор системы",
             role = UserRole.ADMIN,
             status = UserStatus.ACTIVE,

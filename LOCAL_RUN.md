@@ -139,6 +139,8 @@ Flyway применяет все миграции из `src/main/resources/db/mi
 | Роль     | ADMIN                  |
 | Статус   | ACTIVE                 |
 
+`admin123` здесь — **только локальный пароль демо-сида**; см. также раздел **«Локальная безопасность»** ниже.
+
 ---
 
 ## 7. Используется нестандартный порт. Как изменить
@@ -172,7 +174,10 @@ JDBC_URL=jdbc:postgresql://localhost:5434/warehouse_db?connectTimeout=10&socketT
 Эмулятор обращается к серверу на ПК по адресу `10.0.2.2:8080`.  
 Это стандартный IP-адрес хоста для Android AVD.
 
-В `Warehouse_accounting_app/local.properties` по умолчанию:
+**HTTP** (`http://…`) в приложении разрешён **только для debug-сборок** (удобный локальный цикл с эмулятором).  
+Для **production** на стороне клиента и сервера нужен **HTTPS**.
+
+В `Warehouse_accounting_app/local.properties` для **debug** по умолчанию:
 
 ```properties
 # api.base.url=http://10.0.2.2:8080   ← значение по умолчанию, строку можно не добавлять
@@ -184,13 +189,46 @@ JDBC_URL=jdbc:postgresql://localhost:5434/warehouse_db?connectTimeout=10&socketT
 api.base.url=http://IP_ВАШЕГО_ПК:8080
 ```
 
+**Release-сборка приложения:** в `local.properties` обязательно задайте **HTTPS** базовый URL API, например:
+
+```properties
+api.base.url=https://api.ваш-домен.example
+```
+
+Без этого Gradle не соберёт `release` (cleartext в release отключён; фиктивный production URL в репозиторий не зашивается).
+
 ---
 
-## 9. Переменные окружения (справочник)
+## 9. Локальная безопасность, CORS и секреты
 
-| Переменная    | По умолчанию                                              | Назначение          |
-|---------------|-----------------------------------------------------------|---------------------|
-| `JDBC_URL`    | `jdbc:postgresql://localhost:5433/warehouse_db?...`       | JDBC URL для Postgres |
-| `DB_USER`     | `warehouse_user`                                          | Пользователь БД     |
-| `DB_PASSWORD` | `warehouse_password`                                      | Пароль БД           |
-| `JWT_SECRET`  | `change-this-secret-for-local-development`                | Секрет для JWT      |
+### Демо-администратор
+
+| Поле     | Локально по умолчанию     |
+|----------|---------------------------|
+| Email    | `admin@warehouse.local`  |
+| Password | `admin123`               |
+
+Пароль **`admin123` — только для локального демо-сида** (`InitialDataSeed`). В **production** этим паролем пользоваться нельзя.  
+При необходимости задайте другой пароль для сида через переменную окружения **`ADMIN_PASSWORD`** (см. таблицу ниже) или не полагайтесь на автоматический сид в production.
+
+### JWT
+
+Строка секрета по умолчанию в `application.conf` — **только для локальной разработки**.  
+**Вне локальной среды** задайте надёжный **`JWT_SECRET`** через переменные окружения (или механизм секретов вашего рантайма).
+
+### CORS (Ktor)
+
+Плагин CORS на сервере настроен для **браузерных** клиентов при локальной разработке (ограниченный список `localhost` / `127.0.0.1` и портов).  
+Нативный **Android** к CORS не привязан. Для **production** список origin в коде нужно сузить до реального домена вашего фронтенда.
+
+---
+
+## 10. Переменные окружения (справочник)
+
+| Переменная       | По умолчанию                                              | Назначение          |
+|------------------|-----------------------------------------------------------|---------------------|
+| `JDBC_URL`       | `jdbc:postgresql://localhost:5433/warehouse_db?...`       | JDBC URL для Postgres |
+| `DB_USER`        | `warehouse_user`                                          | Пользователь БД     |
+| `DB_PASSWORD`    | `warehouse_password`                                      | Пароль БД           |
+| `JWT_SECRET`     | `change-this-secret-for-local-development`                | Секрет для JWT (**в production обязательно переопределить**) |
+| `ADMIN_PASSWORD` | *(не задана → как у демо-сида локально)* `admin123`        | Пароль учётки из `InitialDataSeed` при первом создании |
