@@ -27,6 +27,31 @@ PostgreSQL (Docker-контейнер, хост-порт 5433 → контейн
 - **IntelliJ IDEA** (рекомендуется) или Gradle из командной строки  
 - **Android Studio + эмулятор** — для запуска мобильного приложения  
 
+### Версии инструментов (два независимых Gradle-проекта)
+
+Репозиторий **WarehouseAccounting** содержит **отдельные** Gradle-проекты `Warehouse_accounting_app` и `Warehouse_accounting_server` **без общего Kotlin-модуля**. Версии Kotlin и Gradle в них **не обязаны совпадать** и **не конфликтуют**, пока нет общего `shared`-модуля. При появлении общего кода версии Kotlin/сериализации нужно будет **синхронизировать**.
+
+**Android (`Warehouse_accounting_app`):**
+
+| Компонент | Версия (по состоянию репозитория) |
+|-----------|-----------------------------------|
+| Kotlin | 2.0.21 |
+| Android Gradle Plugin | 8.13.2 |
+| Gradle (wrapper) | 8.13 |
+| Целевая JVM для app-модуля | 11 |
+| Compose | через BOM `2025.05.00` (см. `gradle/libs.versions.toml`) |
+
+**Server (`Warehouse_accounting_server`):**
+
+| Компонент | Версия (по состоянию репозитория) |
+|-----------|-----------------------------------|
+| Kotlin | 2.1.10 |
+| Gradle (wrapper) | 8.10 |
+| JVM toolchain | 17 |
+| Ktor | 3.0.3 |
+
+Ручной сквозной сценарий «Docker → сервер → эмулятор → вход» см. **`E2E_CHECKLIST.md`**.
+
 ---
 
 ## 2. Запуск PostgreSQL
@@ -94,27 +119,55 @@ docker exec -it warehouse-postgres psql -U warehouse_user -d warehouse_db
 
 ### Через Gradle
 
+Из каталога `Warehouse_accounting_server`:
+
 ```bash
 cd Warehouse_accounting_server
 ./gradlew run
 ```
 
+В **Windows (PowerShell / cmd)**:
+
+```bat
+cd Warehouse_accounting_server
+.\gradlew.bat run
+```
+
 ---
 
-## 5. Проверка работоспособности
+## 5. Проверка работоспособности (`/api/health`)
 
-```
-GET http://localhost:8080/api/health
+Эндпоинт **не требует авторизации**. Удобно проверить из терминала:
+
+```bash
+curl -s http://localhost:8080/api/health
 ```
 
-Ожидаемый ответ:
+**Успешный ответ** (сервер проинициализирован, **пинг БД прошёл**), HTTP **200**:
 
 ```json
-{"status": "ok"}
+{
+  "status": "ok",
+  "database": "ok"
+}
 ```
 
-Пока сервер подключается к БД (Flyway-миграции), возвращается `503 Service Unavailable`.  
-Как только `/api/health` возвращает `200 {"status":"ok"}`, сервер готов.
+**База данных недоступна** (или проверка БД после старта не удалась), HTTP **503**:
+
+```json
+{
+  "status": "unavailable",
+  "database": "unavailable",
+  "message": "База данных недоступна"
+}
+```
+
+**Промежуточное состояние:** пока приложение ещё не пометило себя как полностью готовое (`ServerReadiness`), но соединение с БД уже удаётся, возможен **503** с телом без поля `database`, например `"message": "Сервис временно недоступен"` — это нормально при коротком окне после старта; повторите запрос через несколько секунд.
+
+Пока остальные маршруты `/api/*` (кроме `/api/health`) могут отвечать **503** «сервер запускается» — см. логику готовности в `Application.kt`.
+
+**Локальный демо-вход в API** (тот же пользователь, что и в приложении после `InitialDataSeed`):  
+`admin@warehouse.local` / `admin123` (только для локальной разработки; см. раздел **«Локальная безопасность»** ниже).
 
 ---
 
