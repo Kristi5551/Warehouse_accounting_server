@@ -1,12 +1,15 @@
 # E2E / smoke: Android Emulator → Ktor → PostgreSQL
 
-Ручной чеклист для проверки, что связка **Docker (Postgres) → сервер → эмулятор** работает. Только локальная разработка; учётные данные демо — см. `LOCAL_RUN.md`.
+Ручной чеклист цепочки **Docker (PostgreSQL) → сервер Ktor → эмулятор Android**, плюс **curl-smoke API**, **конкурентный расход**, **роли** и **безопасность**.  
+Учётные данные демо и порты: **`LOCAL_RUN.md`**. Даты в отчётах: **`API_DATE_RANGE.md`**. Детали атомарного списания: **`STOCK_CONCURRENCY_SMOKE.md`**.
 
-**Предусловия:** установлены Docker Desktop, JDK 17, Android Studio; проект склонирован.
+**Предусловия:** Docker Desktop, JDK 17+, Android Studio; **БД не очищать** специально для чеклиста (не выполнять `docker compose down -v`).
 
 ---
 
-## Шаг 1 — Postgres
+## Шаг 1 — PostgreSQL
+
+Из корня репозитория перейдите в модуль сервера и поднимите контейнер:
 
 ```bash
 cd Warehouse_accounting_server
@@ -14,9 +17,9 @@ docker compose up -d
 docker ps
 ```
 
-Ожидается контейнер `warehouse-postgres`, порт **5433 → 5432**.
+Ожидается контейнер **`warehouse-postgres`**, порт хоста **5433 → 5432** внутри контейнера.
 
-Проверка синтаксиса compose (без запуска контейнеров):
+Проверка синтаксиса Compose (без запуска):
 
 ```bash
 docker compose config
@@ -26,110 +29,241 @@ docker compose config
 
 ## Шаг 2 — сервер
 
-Из `Warehouse_accounting_server`:
+Из каталога **`Warehouse_accounting_server`**:
 
-```bash
-./gradlew run
-```
-
-Windows:
+**Windows (PowerShell / cmd):**
 
 ```bat
 .\gradlew.bat run
 ```
 
-Для **локальной** разработки **`JWT_SECRET` можно не задавать** — будет fallback из `application.conf` (только для dev). Для **production/staging** нужны **`APP_ENV`** и **`JWT_SECRET`** в окружении — см. `LOCAL_RUN.md`, раздел JWT.
+**Linux / macOS:**
+
+```bash
+./gradlew run
+```
+
+Для локальной разработки **`JWT_SECRET` можно не задавать** (fallback в `application.conf`). Для имитации production см. **`LOCAL_RUN.md`**, раздел JWT.
 
 ---
 
 ## Шаг 3 — health
 
 ```bash
-curl -s -w "\nHTTP %{http_code}\n" http://localhost:8080/api/health
+curl http://localhost:8080/api/health
 ```
 
-Ожидается **200** и JSON вида:
+Ожидается **HTTP 200** и JSON вида:
 
 ```json
 {"status":"ok","database":"ok"}
 ```
 
-При проблемах с БД возможен **503** (см. `LOCAL_RUN.md`, раздел `/api/health`).
+(При проблемах с БД возможен **503** — см. **`LOCAL_RUN.md`**.)
 
 ---
 
-## Шаг 4–6 — Android
+## Шаг 4 — Android Emulator
 
-1. Запустить AVD в Android Studio.
-2. Убедиться, что **debug** API base URL указывает на хост: **`http://10.0.2.2:8080`** (см. `Warehouse_accounting_app/local.properties` и `LOCAL_RUN.md`).
-3. Установить и открыть приложение (debug-сборка).
-
-**Вход:** `admin@warehouse.local` / `admin123` (только локальный демо-пароль).
+1. Запустите AVD в Android Studio.
+2. Установите **debug**-сборку приложения (см. **`Warehouse_accounting_app/README.md`**).
 
 ---
 
-## Шаг 7–9 — UI (ADMIN)
+## Шаг 5 — базовый URL API на эмуляторе
 
-После входа под ролью **ADMIN** проверить навигацию (без глубокой валидации бизнес-правил):
+Для эмулятора хост ПК — **`http://10.0.2.2:8080`**.  
+В **`Warehouse_accounting_app/local.properties`** для debug по умолчанию можно не задавать строку (используется это значение) или явно:
 
-| Экран / раздел      | Ожидание                          |
-|---------------------|-----------------------------------|
-| Dashboard           | открывается, нет «вечного» лупинга |
-| Users               | список / экран доступен           |
-| Categories          | список                            |
-| Products            | список                            |
-| StockBalances       | остатки                           |
-| Receipt / Issue / WriteOff / Inventory | формы открываются (роли см. приложение) |
-| OperationHistory    | история                           |
-| Reports             | отчёты (роль MANAGER/ADMIN)       |
-| Profile             | данные пользователя               |
-| Logout              | выход на экран входа              |
+```properties
+api.base.url=http://10.0.2.2:8080
+```
 
-Точные права ролей не менялись — если пункт недоступен роли, это ожидаемо.
+Подробнее: **`LOCAL_RUN.md`**, раздел «Android Emulator → сервер».
 
 ---
 
-## Дополнительно: curl после логина
+## Шаг 6 — вход под администратором
 
-Подставьте токен из ответа `login` в `TOKEN` (PowerShell / bash).
+В приложении:
 
-**Логин:**
+| Поле     | Значение              |
+|----------|------------------------|
+| Email    | `admin@warehouse.local` |
+| Password | `admin123`             |
+
+Только **локальный демо-пароль** из сида (`InitialDataSeed`).
+
+---
+
+## Шаг 7 — Dashboard (ADMIN)
+
+После входа откройте **Dashboard**: экран открывается без «вечной» загрузки, виден набор разделов для роли **ADMIN**.
+
+---
+
+## Шаг 8 — разделы приложения (ADMIN)
+
+Пройдите по пунктам (достаточно открыть экран и убедиться, что данные грузятся или форма доступна; без глубокой бизнес-валидации):
+
+| Раздел           | Ожидание (ADMIN)                          |
+|------------------|---------------------------------------------|
+| **Users**        | Экран списка пользователей доступен.        |
+| **Categories**   | Список категорий.                           |
+| **Products**     | Список товаров.                             |
+| **StockBalances**| Остатки по складам.                         |
+| **LowStock**     | Низкие остатки (операционный список).       |
+| **Receipt**      | Форма прихода доступна.                     |
+| **Issue**        | Форма расхода доступна.                     |
+| **WriteOff**     | Форма списания доступна.                    |
+| **Inventory**    | Форма инвентаризации доступна.              |
+| **OperationHistory** | История операций.                       |
+| **Reports**      | Отчёты (сводка, операции, др.).             |
+| **Profile**      | Профиль текущего пользователя.              |
+
+Если пункт скрыт guard при другой роли — см. раздел **«Проверка ролей»** ниже.
+
+---
+
+## Шаг 9 — выход (logout)
+
+Выполните **Logout** в приложении: возврат на экран входа, повторный запрос к защищённым API без нового логина не должен использовать старый токен.
+
+---
+
+## Curl-smoke API (после логина)
+
+Подставьте **`TOKEN`** — строка JWT из поля **`token`** ответа **`POST /api/auth/login`**.
+
+### Bash / zsh (пример с сохранением токена)
 
 ```bash
-curl -s -X POST http://localhost:8080/api/auth/login \
+cd Warehouse_accounting_server
+TOKEN="$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"admin@warehouse.local\",\"password\":\"admin123\"}"
+  -d '{"email":"admin@warehouse.local","password":"admin123"}' \
+  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+# Если есть jq: TOKEN="$(curl -s ... | jq -r .token)"
+
+curl -s http://localhost:8080/api/auth/me -H "Authorization: Bearer $TOKEN"
+
+curl -s http://localhost:8080/api/categories -H "Authorization: Bearer $TOKEN"
+
+curl -s "http://localhost:8080/api/products?activeOnly=true" -H "Authorization: Bearer $TOKEN"
+
+curl -s http://localhost:8080/api/stock/balances -H "Authorization: Bearer $TOKEN"
+
+curl -s http://localhost:8080/api/stock/low -H "Authorization: Bearer $TOKEN"
+
+curl -s http://localhost:8080/api/operations -H "Authorization: Bearer $TOKEN"
+
+curl -s http://localhost:8080/api/reports/stock-summary -H "Authorization: Bearer $TOKEN"
 ```
 
-**Профиль:**
+### Windows PowerShell
+
+```powershell
+$loginBody = '{"email":"admin@warehouse.local","password":"admin123"}'
+$login = Invoke-RestMethod -Uri "http://localhost:8080/api/auth/login" -Method Post -ContentType "application/json" -Body $loginBody
+$TOKEN = $login.token
+$headers = @{ Authorization = "Bearer $TOKEN" }
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/auth/me" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:8080/api/categories" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:8080/api/products?activeOnly=true" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:8080/api/stock/balances" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:8080/api/stock/low" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:8080/api/operations" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:8080/api/reports/stock-summary" -Headers $headers
+```
+
+### POST приход и расход (подставьте `warehouseId`, `productId`, `price`)
+
+Значения возьмите из **`GET /api/stock/balances`** или из БД после миграций/сида. Пример тела — валидный JSON:
 
 ```bash
-curl -s http://localhost:8080/api/auth/me -H "Authorization: Bearer TOKEN"
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/stock/receipt \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"warehouseId":1,"productId":1,"quantity":"10","price":"100.00","supplier":"smoke","comment":null}'
 ```
-
-**Категории:**
 
 ```bash
-curl -s http://localhost:8080/api/categories -H "Authorization: Bearer TOKEN"
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/stock/issue \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"warehouseId":1,"productId":1,"quantity":"1","reason":null,"comment":"smoke"}'
 ```
 
-**Товары:**
+Ожидается **HTTP 201 Created** при успехе.
+
+---
+
+## Сценарий: двойной расход (конкуренция)
+
+**Условие:** по выбранной паре **склад + товар** остаток ровно **5** (задайте приходом или инвентаризацией в UI / через API).
+
+**Действие:** два HTTP-клиента отправляют **расход (issue)** на **4** единицы **почти одновременно** (два окна терминала, Postman, или скрипт с параллельным запуском).
+
+**Ожидается:**
+
+- один запрос успешен (**201**);
+- второй — **409 Conflict**, сообщение вроде **«Недостаточно товара на складе»**;
+- итоговый остаток **не отрицательный** (для сценария 5 − 4 остаётся **1**);
+- **нет** «полу-сохранённой» операции: либо операция создана целиком, либо отказ без изменения остатка.
+
+**PowerShell (два окна):** в обоих задайте `$TOKEN` как после логина admin (или кладовщика). В каждом окне выполните одну и ту же команду **`issue`** с одинаковыми `warehouseId` / `productId` / `quantity":"4"` и нажмите Enter **почти одновременно**:
+
+```powershell
+curl.exe -s -w "`nHTTP %{http_code}`n" -X POST http://localhost:8080/api/stock/issue `
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" `
+  -d "{\"warehouseId\":1,\"productId\":1,\"quantity\":\"4\"}"
+```
+
+Затем проверьте **`GET /api/stock/balances`** и **`GET /api/operations`**.
+
+Подробности реализации: **`STOCK_CONCURRENCY_SMOKE.md`**, **`LOCAL_RUN.md`** (раздел про конкурентные расходы).
+
+---
+
+## Проверка ролей (UI и/или API)
+
+Подготовка: учётные записи **STOREKEEPER** и **MANAGER** можно получить через **саморегистрацию** (`/api/auth/register`) и **подтверждение ADMIN** (`Users` в приложении) либо создать администратором — см. API пользователей. Для проверки нужен **активный** пользователь с нужной ролью.
+
+| Ожидание | ADMIN | STOREKEEPER | MANAGER |
+|----------|:-----:|:-----------:|:-------:|
+| Видит **Users** | да | нет* | нет* |
+| Склад: остатки, история, формы Receipt/Issue/WriteOff/Inventory (мутации) | да | да | нет* (мутации) |
+| **LowStock** (`GET /api/stock/low`) | да | да | да |
+| **Reports** (`/api/reports/*`) | да | нет* | да |
+
+\*Если пункт скрыт в Android — это ожидаемо по **`RolePermissions`**; сервер всё равно должен отвечать **403** на запрещённые маршруты для JWT этой роли.
+
+Кратко:
+
+- **ADMIN** — полный доступ к перечисленным разделам и отчётам.
+- **STOREKEEPER** — складские операции и просмотр (в т.ч. **LowStock**); **Users** и **Reports** недоступны.
+- **MANAGER** — **Reports**, **LowStock**, просмотр остатков/истории; **создание прихода/расхода/списания/инвентаризации** через API не допускается (**403**).
+
+---
+
+## Безопасность (smoke)
+
+Выполните после старта сервера.
+
+| Проверка | Как | Ожидание |
+|----------|-----|----------|
+| Запрос **без** `Authorization` к защищённому ресурсу | `curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/categories` | **401** |
+| **MANAGER**: складская мутация | `POST /api/stock/issue` с JWT пользователя **MANAGER** | **403** |
+| **STOREKEEPER**: отчёт | `GET /api/reports/stock-summary` с JWT **STOREKEEPER** | **403** |
+
+Пример без токена:
 
 ```bash
-curl -s "http://localhost:8080/api/products?activeOnly=true" -H "Authorization: Bearer TOKEN"
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/stock/balances
 ```
 
-**Остатки:**
-
-```bash
-curl -s http://localhost:8080/api/stock/balances -H "Authorization: Bearer TOKEN"
-```
-
-**Отчёты (пример — сводка):**
-
-```bash
-curl -s http://localhost:8080/api/reports/stock-summary -H "Authorization: Bearer TOKEN"
-```
+Для **403** сначала получите два токена (MANAGER и STOREKEEPER) и подставьте в `Authorization: Bearer …`.
 
 ---
 
@@ -137,21 +271,18 @@ curl -s http://localhost:8080/api/reports/stock-summary -H "Authorization: Beare
 
 Контракт query **`dateFrom`** / **`dateTo`**: см. **`API_DATE_RANGE.md`**.
 
-Ручная проверка в приложении (после входа, роль с доступом к отчётам / истории):
-
 | Сценарий | Ожидание |
 |----------|----------|
-| Отчёты → период пустой, обновить | Загружаются операции **без** фильтра по датам (оба query-параметра опущены). |
-| Только **от** `2026-05-01` | Операции с 1 мая 00:00 (локально сервер/JVM) и новее. |
-| Только **до** `2026-05-05` | Включается весь 5 мая до конца суток. |
-| **От** и **до** один день `2026-05-01` | Только операции за 1 мая. |
-| История операций — те же комбинации | Те же правила (те же query-параметры к `/api/operations`). |
-| «От» позже «до» (например 2026-05-10 … 2026-05-01) | В приложении должно показаться сообщение валидации; запрос не уходит с некорректным диапазоном. |
+| Отчёты → период пустой, обновить | Операции **без** фильтра по датам. |
+| Только **от** / только **до** / один день | См. таблицу в **`API_DATE_RANGE.md`**. |
+| История операций | Те же параметры к **`GET /api/operations`**. |
+| «От» позже «до» в приложении | Сообщение валидации; запрос с некорректным диапазоном не уходит. |
 
 ---
 
 ## См. также
 
-- **`LOCAL_RUN.md`** — порты, безопасность, Android release URL, переменные окружения.
-- **`API_DATE_RANGE.md`** — формат дат, включение `dateTo`, timezone.
-- **`MIGRATIONS_NOTES.md`** — стратегия V8 и новых сидов.
+- **`LOCAL_RUN.md`** — порты, Postgres, JWT, эмулятор, `local.properties`.
+- **`API_DATE_RANGE.md`** — формат дат и timezone.
+- **`STOCK_CONCURRENCY_SMOKE.md`** — конкурентное списание.
+- **`MIGRATIONS_NOTES.md`** — миграции и сиды.
