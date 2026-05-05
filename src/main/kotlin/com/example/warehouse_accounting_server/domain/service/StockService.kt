@@ -49,7 +49,7 @@ class StockService(
     }
 
     fun getLowStock(currentUserId: Long): List<StockBalanceResponse> {
-        accessControl.requireReportReader(currentUserId)
+        accessControl.requireLowStockReader(currentUserId)
         return stockRepository.getLowStock().map { it.toBalanceResponse() }
     }
 

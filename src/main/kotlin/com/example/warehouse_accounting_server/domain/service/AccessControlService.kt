@@ -55,7 +55,14 @@ class AccessControlService(
     fun requireStockOperator(userId: Long): User =
         requireAnyActiveRole(userId, setOf(UserRole.ADMIN, UserRole.STOREKEEPER))
 
-    /** Отчёты и аналитика (включая низкие остатки): ADMIN, MANAGER. */
+    /** Низкие остатки GET stock low: ADMIN, STOREKEEPER, MANAGER. Отчёты reports остаются только у ADMIN и MANAGER. */
+    fun requireLowStockReader(userId: Long): User =
+        requireAnyActiveRole(
+            userId,
+            setOf(UserRole.ADMIN, UserRole.STOREKEEPER, UserRole.MANAGER),
+        )
+
+    /** Отчёты и аналитика (маршруты api/reports): только ADMIN и MANAGER. */
     fun requireReportReader(userId: Long): User =
         requireAnyActiveRole(userId, setOf(UserRole.ADMIN, UserRole.MANAGER))
 }
