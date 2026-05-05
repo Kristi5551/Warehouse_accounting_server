@@ -104,7 +104,7 @@ class StockRepositoryImpl : StockRepository {
             .map { it.toStockBalanceView() }
     }
 
-    /** Остаток ≤ min (включая ноль) для активных товаров. */
+    /** Операционный низкий остаток для `GET /api/stock/low` (все склады; формат как у balances). */
     override fun getLowStock(): List<StockBalanceView> = transaction {
         balanceJoin
             .selectAll()

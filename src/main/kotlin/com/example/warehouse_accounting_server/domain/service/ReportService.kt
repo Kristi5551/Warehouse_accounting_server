@@ -44,6 +44,11 @@ class ReportService(
         )
     }
 
+    /**
+     * Отчётные строки по низким остаткам (`GET /api/reports/low-stock`): компактные строки отчёта
+     * ([LowStockReportResponse]), опционально по складу. Для операционного списка с категорией и статусом
+     * см. [StockService.getLowStock].
+     */
     fun lowStock(actorId: Long, warehouseId: Long?): List<LowStockReportResponse> {
         accessControl.requireReportReader(actorId)
         return reportRepository.lowStockReport(warehouseId).map(ReportMapper::toResponse)

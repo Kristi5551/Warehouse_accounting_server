@@ -227,6 +227,9 @@ JDBC_URL=jdbc:postgresql://localhost:5434/warehouse_db?connectTimeout=10&socketT
 Эмулятор обращается к серверу на ПК по адресу `10.0.2.2:8080`.  
 Это стандартный IP-адрес хоста для Android AVD.
 
+**Cleartext (HTTP):** в манифесте `android:usesCleartextTraffic` задаётся через placeholder **`cleartextTraffic`**:  
+**debug** = `true` (разрешён HTTP, в т.ч. `http://10.0.2.2:8080`); **release** = `false` (только **HTTPS** к API — см. `api.base.url` и задачу `validateReleaseApiBaseUrl` в `app/build.gradle.kts`).
+
 **HTTP** (`http://…`) в приложении разрешён **только для debug-сборок** (удобный локальный цикл с эмулятором).  
 Для **production** на стороне клиента и сервера нужен **HTTPS**.
 

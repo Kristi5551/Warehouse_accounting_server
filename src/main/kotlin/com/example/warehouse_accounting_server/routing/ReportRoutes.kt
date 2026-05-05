@@ -11,6 +11,14 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 
+/**
+ * Отчёты под `/api/reports`.
+ *
+ * **Отчёт по низким остаткам:** `GET /api/reports/low-stock` — строки отчёта
+ * ([com.example.warehouse_accounting_server.dto.response.report.LowStockReportResponse]) для аналитики;
+ * опционально `warehouseId`. Доступ: `requireReportReader` (ADMIN, MANAGER).
+ * Операционный просмотр без фильтра отчёта — `GET /api/stock/low`.
+ */
 fun Route.reportRoutes(reportService: ReportService) {
     authenticate("auth-jwt") {
         route("/api/reports") {
@@ -19,6 +27,7 @@ fun Route.reportRoutes(reportService: ReportService) {
                 val wh = call.request.queryParameters["warehouseId"]?.toLongOrNull()
                 call.respond(reportService.stockSummary(actorId, wh))
             }
+            /** Low-stock report rows / analytics (optional warehouse filter). */
             get("/low-stock") {
                 val actorId = call.principal<JWTPrincipal>()!!.userId()
                 val wh = call.request.queryParameters["warehouseId"]?.toLongOrNull()

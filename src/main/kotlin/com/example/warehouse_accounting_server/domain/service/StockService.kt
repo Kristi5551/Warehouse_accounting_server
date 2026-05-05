@@ -48,6 +48,10 @@ class StockService(
         return stockRepository.getBalances(search, categoryId, status).map { it.toBalanceResponse() }
     }
 
+    /**
+     * Операционный список позиций с низким остатком (`GET /api/stock/low`): те же поля, что у остатков
+     * ([StockBalanceResponse]), удобно для экрана кладовщика/менеджера. Для отчётной выборки см. [ReportService.lowStock].
+     */
     fun getLowStock(currentUserId: Long): List<StockBalanceResponse> {
         accessControl.requireLowStockReader(currentUserId)
         return stockRepository.getLowStock().map { it.toBalanceResponse() }

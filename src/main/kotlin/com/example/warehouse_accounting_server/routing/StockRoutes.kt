@@ -19,6 +19,14 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
+/**
+ * Складские маршруты под `/api/stock`.
+ *
+ * **Операционный список низких остатков:** `GET /api/stock/low` — полноценные строки остатков
+ * ([com.example.warehouse_accounting_server.dto.response.stock.StockBalanceResponse]): товар, категория,
+ * склад, количество, минимум, статус, обновление. Доступ: `requireLowStockReader` (ADMIN, STOREKEEPER, MANAGER).
+ * Не путать с отчётным `GET /api/reports/low-stock` (аналитика; только ADMIN, MANAGER).
+ */
 fun Route.stockRoutes(stockService: StockService) {
     authenticate("auth-jwt") {
         route("/api/stock") {
@@ -29,6 +37,7 @@ fun Route.stockRoutes(stockService: StockService) {
                 val status = call.request.queryParameters["status"]?.let { StockStatus.valueOf(it) }
                 call.respond(stockService.getBalances(userId, search, categoryId, status))
             }
+            /** Operational low-stock list for day-to-day work (full balance rows). */
             get("/low") {
                 val userId = call.principal<JWTPrincipal>()!!.userId()
                 call.respond(stockService.getLowStock(userId))

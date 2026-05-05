@@ -26,6 +26,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.LocalDate
 
 class ReportRepositoryImpl : ReportRepository {
+    /** Данные для отчёта `/api/reports/low-stock` (не операционный `/api/stock/low`). */
     override fun lowStockReport(warehouseId: Long?): List<LowStockReport> = transaction {
         val join =
             StockBalancesTable.innerJoin(ProductsTable, { StockBalancesTable.productId }, { ProductsTable.id })
