@@ -33,6 +33,10 @@ fun Route.reportRoutes(reportService: ReportService) {
                 val wh = call.request.queryParameters["warehouseId"]?.toLongOrNull()
                 call.respond(reportService.lowStock(actorId, wh))
             }
+            /**
+             * Отчёт по операциям за период. Query: [parseDateQuery] для **dateFrom** / **dateTo** (`yyyy-MM-dd`);
+             * см. [com.example.warehouse_accounting_server.util.ReportDateBounds].
+             */
             get("/operations") {
                 val actorId = call.principal<JWTPrincipal>()!!.userId()
                 val dateFrom = parseDateQuery(call.request.queryParameters["dateFrom"])

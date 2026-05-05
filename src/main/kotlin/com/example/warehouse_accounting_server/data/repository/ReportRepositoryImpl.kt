@@ -52,6 +52,7 @@ class ReportRepositoryImpl : ReportRepository {
             }
     }
 
+    /** Строки отчёта по операциям; границы дат — [ReportDateBounds]. */
     override fun operationsReport(dateFrom: LocalDate?, dateTo: LocalDate?): List<OperationReport> = transaction {
         val join =
             StockOperationsTable

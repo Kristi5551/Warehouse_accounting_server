@@ -12,6 +12,8 @@ import java.time.LocalDateTime
  * - **toExclusive** — `dateTo.plusDays(1).atStartOfDay()`: в выборку попадает весь последний день **включительно** (`createdAt < toExclusive`).
  *
  * Отдельной таймзоны приложения нет: дата — «настенный календарь сервера/БД». При необходимости учёта часовых поясов пользователя понадобится явная политика (например UTC + смещение в API).
+ *
+ * Подробный контракт для клиентов: **`API_DATE_RANGE.md`** в корне модуля сервера.
  */
 data class ReportDateBounds(
     val fromInclusive: LocalDateTime?,

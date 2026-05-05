@@ -320,7 +320,9 @@ export JWT_SECRET="$(openssl rand -base64 48)"
 
 ### Период в отчётах и истории
 
-Параметры **`dateFrom`** / **`dateTo`** в query — строки **`yyyy-MM-dd`**. На сервере границы строятся так: начало дня для `dateFrom`, для `dateTo` — **весь день включительно** (`created_at < dateTo.plusDays(1).atStartOfDay()`). Используется **локальное время JVM сервера** и те же «настенные» метки, что у `TIMESTAMP WITHOUT TIME ZONE` в БД для `created_at` (см. `ReportDateBounds`).
+Полный контракт (формат, открытые интервалы, timezone, список эндпоинтов): **[API_DATE_RANGE.md](API_DATE_RANGE.md)**.
+
+Кратко: параметры **`dateFrom`** / **`dateTo`** — **`yyyy-MM-dd`**. Нижняя граница **включительно** (`>= dateFrom.atStartOfDay()`), верхняя **`dateTo` — весь день включительно** через верхнюю границу **исключающую полуночь следующего дня** (`created_at < dateTo.plusDays(1).atStartOfDay()`). **Timezone:** локальная JVM сервера; в БД `created_at` без таймзоны — та же семантика «настенного календаря». Реализация: `ReportDateBounds`, разбор query: `parseDateQuery` в **`OperationQueryParsers.kt`**.
 
 ### Smoke: два параллельных расхода при остатке 5
 

@@ -42,6 +42,10 @@ fun Route.stockRoutes(stockService: StockService) {
                 val userId = call.principal<JWTPrincipal>()!!.userId()
                 call.respond(stockService.getLowStock(userId))
             }
+            /**
+             * История операций по товару. **dateFrom** / **dateTo** — [parseDateQuery] (`yyyy-MM-dd`);
+             * период — [com.example.warehouse_accounting_server.util.ReportDateBounds].
+             */
             get("/products/{id}/history") {
                 val principalUserId = call.principal<JWTPrincipal>()!!.userId()
                 val id = call.parameters["id"]!!.toLong()

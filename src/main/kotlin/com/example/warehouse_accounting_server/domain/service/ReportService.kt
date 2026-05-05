@@ -54,6 +54,10 @@ class ReportService(
         return reportRepository.lowStockReport(warehouseId).map(ReportMapper::toResponse)
     }
 
+    /**
+     * Пакет отчёта по операциям за календарный период. **dateFrom** / **dateTo** —
+     * см. [com.example.warehouse_accounting_server.util.ReportDateBounds].
+     */
     fun operations(actorId: Long, dateFrom: LocalDate?, dateTo: LocalDate?): OperationsReportBundleResponse {
         accessControl.requireReportReader(actorId)
         val lines = reportRepository.operationsReport(dateFrom, dateTo)

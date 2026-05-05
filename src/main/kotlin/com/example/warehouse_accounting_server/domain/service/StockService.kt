@@ -67,6 +67,7 @@ class StockService(
         if (!w.isActive) throw ValidationException("Склад не активен")
     }
 
+    /** История операций; период **dateFrom** / **dateTo** — см. [com.example.warehouse_accounting_server.util.ReportDateBounds]. */
     fun getOperations(
         currentUserId: Long,
         type: StockOperationType?,
@@ -79,6 +80,7 @@ class StockService(
         return stockRepository.findOperations(type, productId, userId, dateFrom, dateTo).map { it.toResponse() }
     }
 
+    /** История по товару; период **dateFrom** / **dateTo** — см. [com.example.warehouse_accounting_server.util.ReportDateBounds]. */
     fun getProductHistory(
         currentUserId: Long,
         productId: Long,
