@@ -38,6 +38,8 @@ Windows:
 .\gradlew.bat run
 ```
 
+Для **локальной** разработки **`JWT_SECRET` можно не задавать** — будет fallback из `application.conf` (только для dev). Для **production/staging** нужны **`APP_ENV`** и **`JWT_SECRET`** в окружении — см. `LOCAL_RUN.md`, раздел JWT.
+
 ---
 
 ## Шаг 3 — health

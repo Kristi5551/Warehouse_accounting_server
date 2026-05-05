@@ -266,8 +266,32 @@ api.base.url=https://api.ваш-домен.example
 
 ### JWT
 
-Строка секрета по умолчанию в `application.conf` — **только для локальной разработки**.  
-**Вне локальной среды** задайте надёжный **`JWT_SECRET`** через переменные окружения (или механизм секретов вашего рантайма).
+- **Локально и учебный запуск:** если **`APP_ENV` не задан** (или не `production` / `prod` / `staging`), можно не задавать `JWT_SECRET` — подставится значение по умолчанию из `application.conf`. Это **не боевой** секрет, его знают все, у кого есть репозиторий; подходит только для dev.
+- **Production / staging:** задайте **`APP_ENV=production`** (или `prod` / `staging`) и обязательно **`JWT_SECRET`** в окружении процесса. Иначе сервер при старте завершится с ошибкой (см. `AppConfig`). Боевой секрет **не храните** в git и не кладите в `application.conf`.
+- Подстановка: в `application.conf` строка `secret = ${?JWT_SECRET}` — при наличии переменной используется она.
+
+**Пример (PowerShell, локально с явным секретом):**
+
+```powershell
+$env:JWT_SECRET = "ваш-случайный-длинный-секрет"
+.\gradlew.bat run
+```
+
+**Пример (PowerShell, имитация production — без JWT_SECRET процесс не стартует):**
+
+```powershell
+$env:APP_ENV = "production"
+# обязательно:
+$env:JWT_SECRET = "криптостойкая-случайная-строка"
+.\gradlew.bat run
+```
+
+**Пример (bash):**
+
+```bash
+export JWT_SECRET="$(openssl rand -base64 48)"
+./gradlew run
+```
 
 ### CORS (Ktor)
 
@@ -280,10 +304,11 @@ api.base.url=https://api.ваш-домен.example
 
 | Переменная       | По умолчанию                                              | Назначение          |
 |------------------|-----------------------------------------------------------|---------------------|
+| `APP_ENV`        | *(не задана)*                                             | Если `production`, `prod` или `staging`, **обязателен** `JWT_SECRET` (иначе старт упадёт) |
 | `JDBC_URL`       | `jdbc:postgresql://localhost:5433/warehouse_db?...`       | JDBC URL для Postgres |
 | `DB_USER`        | `warehouse_user`                                          | Пользователь БД     |
 | `DB_PASSWORD`    | `warehouse_password`                                      | Пароль БД           |
-| `JWT_SECRET`     | `change-this-secret-for-local-development`                | Секрет для JWT (**в production обязательно переопределить**) |
+| `JWT_SECRET`     | `change-this-secret-for-local-development` *(только если не задана env; только local/dev)* | Секрет подписи JWT (**в production/staging только из env**, не из репозитория) |
 | `ADMIN_PASSWORD` | *(не задана → как у демо-сида локально)* `admin123`        | Пароль учётки из `InitialDataSeed` при первом создании |
 
 ---

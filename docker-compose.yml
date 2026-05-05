@@ -9,6 +9,7 @@
 # Порт 5433 позволяет запускать Docker-контейнер без конфликтов.
 #
 # Схема: Android Emulator → http://10.0.2.2:8080 → Ktor (порт 8080) → PostgreSQL в Docker (localhost:5433).
+# JWT и прочие секреты Ktor задаются в окружении процесса на хосте (см. LOCAL_RUN.md); сервер в этом compose не запускается.
 
 services:
   postgres:
