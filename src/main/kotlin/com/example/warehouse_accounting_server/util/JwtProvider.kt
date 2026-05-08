@@ -7,14 +7,6 @@ import com.example.warehouse_accounting_server.config.JwtSettings
 import com.example.warehouse_accounting_server.domain.model.User
 import java.util.Date
 
-/**
- * Выпуск и проверка JWT.
- *
- * Claim [CLAIM_ROLE] — роль на момент выдачи (для клиента). **Авторизация на сервере — по БД**
- * ([com.example.warehouse_accounting_server.domain.service.AccessControlService]), не по этому claim.
- *
- * **Безопасность:** строка секрета ([JwtSettings.secret]) не должна попадать в логи и внешние ответы.
- */
 class JwtProvider(
     private val settings: JwtSettings,
 ) {

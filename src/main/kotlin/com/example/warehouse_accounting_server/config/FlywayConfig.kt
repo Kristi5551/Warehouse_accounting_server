@@ -1,14 +1,23 @@
 package com.example.warehouse_accounting_server.config
 
 import org.flywaydb.core.Flyway
+import java.util.Locale
 
-/** Запуск миграций из `classpath:db/migration`. Правила легаси V8 и новых сидов — см. MIGRATIONS_NOTES.md. */
 object FlywayConfig {
     fun migrate(jdbcUrl: String, user: String, password: String) {
-        Flyway.configure()
-            .dataSource(jdbcUrl, user, password)
-            .locations("classpath:db/migration")
-            .load()
-            .migrate()
+        val config =
+            Flyway.configure()
+                .dataSource(jdbcUrl, user, password)
+                .locations("classpath:db/migration")
+        val flyway = config.load()
+        if (flywayRepairOnMigrate()) {
+            flyway.repair()
+        }
+        flyway.migrate()
+    }
+
+    private fun flywayRepairOnMigrate(): Boolean {
+        val env = System.getenv("APP_ENV")?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        return env !in setOf("production", "prod", "staging")
     }
 }

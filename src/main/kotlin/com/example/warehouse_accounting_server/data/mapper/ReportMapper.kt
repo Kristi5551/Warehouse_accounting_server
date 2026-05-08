@@ -57,7 +57,6 @@ object ReportMapper {
             value = r.value.stripTrailingZeros().toPlainString(),
         )
 
-    /** Одна запись [OperationReport] = одна операция (все строки уже сгруппированы по operationId). */
     fun distinctOpsByType(reports: List<OperationReport>, type: StockOperationType): Int =
         reports.count { it.operationType == type }
 }

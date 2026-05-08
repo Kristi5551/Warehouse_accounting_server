@@ -24,12 +24,6 @@ data class AppConfig(
     val jwt: JwtSettings,
 ) {
     companion object {
-        /**
-         * Строка по умолчанию в файле `application.conf` для `warehouse.jwt.secret` при отсутствии `JWT_SECRET` в окружении.
-         * Не использовать как боевой секрет; для production/staging задайте **`JWT_SECRET` только через env**.
-         */
-        const val LOCAL_JWT_SECRET_FALLBACK = "change-this-secret-for-local-development"
-
         fun load(app: Application): AppConfig {
             return from(app.environment.config)
         }
@@ -56,10 +50,6 @@ data class AppConfig(
             )
         }
 
-        /**
-         * Для окружений **production** / **staging** процесс обязан явно получить секрет из **`JWT_SECRET`**;
-         * fallback из конфига допустим только для локальной разработки и учебного запуска.
-         */
         private fun validateJwtSecretForNonLocalDeployments() {
             val appEnv = System.getenv("APP_ENV")?.trim()?.lowercase(Locale.ROOT).orEmpty()
             if (appEnv.isEmpty()) return

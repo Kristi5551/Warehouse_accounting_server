@@ -10,10 +10,6 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 
-/**
- * Список операций: **GET /api/operations**. Период: query **dateFrom** / **dateTo** в формате `yyyy-MM-dd`;
- * границы — [com.example.warehouse_accounting_server.util.ReportDateBounds] (весь день **dateTo** включительно).
- */
 fun Route.operationRoutes(stockService: StockService) {
     authenticate("auth-jwt") {
         get("/api/operations") {

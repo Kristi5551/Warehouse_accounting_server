@@ -10,11 +10,9 @@ data class OperationReportResponse(
     val warehouseName: String,
     val createdByName: String,
     val createdAt: String,
-    /** Первая позиция; для обратной совместимости клиентов без [items]. */
     val productArticle: String,
     val productName: String,
     val quantity: String,
     val price: String?,
-    /** Все позиции операции (обычно одна; при нескольких — полный список). */
     val items: List<OperationReportItemResponse> = emptyList(),
 )

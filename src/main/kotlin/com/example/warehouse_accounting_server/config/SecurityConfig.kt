@@ -12,7 +12,6 @@ import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.jwt.jwt
 import io.ktor.server.response.respond
 
-/** JWT здесь только идентифицирует пользователя (`userId` в payload). Права — в [AccessControlService] по БД. */
 fun Application.configureSecurity(
     appConfig: AppConfig,
     jwtProvider: JwtProvider,
@@ -45,27 +44,3 @@ fun JWTPrincipal.userId(): Long =
     payload.getClaim(JwtProvider.CLAIM_USER_ID).asLong()
         ?: throw ApiException(HttpStatusCode.Unauthorized, "Недействительный токен")
 
-/**
- * Роль из JWT (claim `role`) — **только справочно** для клиента; не использовать как источник прав на сервере.
- */
-fun JWTPrincipal.userRole(): UserRole {
-    val raw = payload.getClaim(JwtProvider.CLAIM_ROLE).asString()
-        ?: throw ApiException(HttpStatusCode.Unauthorized, "Недействительный токен")
-    return runCatching { UserRole.valueOf(raw) }.getOrElse {
-        throw ApiException(HttpStatusCode.Unauthorized, "Недействительный токен")
-    }
-}
-
-/**
- * Проверка роли **по JWT-claim** (устаревший вспомогательный API). Не вызывать из маршрутов —
- * доступ по роли выполняется в сервисах через [AccessControlService] по актуальной записи в БД.
- */
-@Deprecated(
-    message = "Не использовать в маршрутах. Права — AccessControlService + userId из JWT.",
-    level = DeprecationLevel.WARNING,
-)
-fun JWTPrincipal.requireRoles(vararg allowed: UserRole): UserRole {
-    val role = userRole()
-    RoleAccess.require(role, *allowed)
-    return role
-}

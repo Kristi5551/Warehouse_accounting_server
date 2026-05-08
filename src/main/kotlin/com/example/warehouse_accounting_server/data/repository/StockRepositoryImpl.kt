@@ -44,18 +44,6 @@ import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.LocalDateTime
 
-/**
- * Остатки и складские операции: одна SQL-транзакция на операцию, без частичных записей при откате.
- *
- * **Расход / списание:** атомарный `UPDATE … SET quantity = quantity - :qty WHERE quantity >= :qty`;
- * при `0` обновлённых строк — [ConflictException] до вставки `stock_operations` (защита от lost update
- * и двойного расхода при гонке). Дополнительно CHECK `quantity >= 0` (V10).
- *
- * **Приход:** `INSERT … ON CONFLICT DO UPDATE` увеличивает остаток одной командой.
- *
- * **Инвентаризация:** гарантированная строка остатка, `SELECT … FOR UPDATE`, выставление факта,
- * затем запись операции (остаток обновляется до audit-строки в той же транзакции).
- */
 class StockRepositoryImpl : StockRepository {
 
     private val balanceJoin =
@@ -251,10 +239,7 @@ class StockRepositoryImpl : StockRepository {
         )
     }
 
-    /**
-     * Только внутри уже открытой Exposed-[transaction] (иначе — «No transaction in context»).
-     */
-    private fun readOperationWithItemsInCurrentTx(operationId: Long): StockOperationWithItems? {
+   private fun readOperationWithItemsInCurrentTx(operationId: Long): StockOperationWithItems? {
         val row =
             StockOperationsTable.selectAll().where { StockOperationsTable.id eq operationId }.singleOrNull()
                 ?: return null
@@ -409,11 +394,6 @@ class StockRepositoryImpl : StockRepository {
         )
     }
 
-    /**
-     * Перед `SELECT … FOR UPDATE` для инвентаризации гарантирует наличие строки остатка (0 шт.):
-     * если строки нет, `FOR UPDATE` не блокирует «пустое место», и две конкурентные инвентаризации
-     * могли бы гоняться без сериализации на одной паре product/warehouse.
-     */
     private fun ensureBalanceRowExistsForInventory(productId: Long, warehouseId: Long, now: LocalDateTime) {
         val jdbc = (TransactionManager.current().connection as JdbcConnectionImpl).connection
         val sql =
@@ -430,7 +410,6 @@ class StockRepositoryImpl : StockRepository {
         }
     }
 
-    /** PostgreSQL: одна команда upsert защищает от гонки «два прихода создают строку». */
     private fun upsertAddToBalance(
         productId: Long,
         warehouseId: Long,
@@ -456,11 +435,6 @@ class StockRepositoryImpl : StockRepository {
         }
     }
 
-    /**
-     * Атомарное списание (расход / списание): одна SQL-операция `UPDATE … WHERE quantity >= :qty`.
-     * Две конкурентные транзакции не могут обе списать больше фактического остатка:
-     * у второй `UPDATE` снимет 0 строк → ConflictException до записи операции. Дополнительно V10 CHECK (quantity >= 0).
-     */
     private fun tryDecrementBalance(
         productId: Long,
         warehouseId: Long,
@@ -501,10 +475,6 @@ class StockRepositoryImpl : StockRepository {
         }
     }
 
-    /**
-     * Строка остатка под блокировкой на время транзакции (если есть);
-     * иначе логический «ноль» как раньше ([getBalanceQuantity]).
-     */
     private fun lockBalanceQuantityForUpdate(productId: Long, warehouseId: Long): BigDecimal {
         val rows =
             StockBalancesTable
@@ -518,7 +488,6 @@ class StockRepositoryImpl : StockRepository {
         return rows.singleOrNull()?.get(StockBalancesTable.quantity) ?: BigDecimal.ZERO
     }
 
-    /** [lineQty] — величина в строке operation_items (>= 0); направление задаёт [type]. */
     private fun finishMovement(
         type: StockOperationType,
         warehouseId: Long,

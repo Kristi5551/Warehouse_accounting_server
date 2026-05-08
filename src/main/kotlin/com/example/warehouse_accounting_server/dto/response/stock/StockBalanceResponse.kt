@@ -2,7 +2,6 @@ package com.example.warehouse_accounting_server.dto.response.stock
 
 import kotlinx.serialization.Serializable
 
-/** JSON для операционного `GET /api/stock/low` и общих списков остатков: категория, статус, дата обновления. */
 @Serializable
 data class StockBalanceResponse(
     val id: Long,

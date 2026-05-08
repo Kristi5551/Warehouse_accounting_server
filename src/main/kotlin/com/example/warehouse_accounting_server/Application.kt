@@ -54,10 +54,6 @@ fun Application.module() {
     configureCallLogging()
     configureSecurity(appConfig, jwtProvider)
 
-    /**
-     * Порт открывается до завершения Flyway/БД. Пока API не готов — отвечаем 503, чтобы клиент
-     * не ждал TCP connect timeout (как при полностью выключенном сервере).
-     */
     intercept(ApplicationCallPipeline.Call) {
         val path = context.request.path()
         if (!ServerReadiness.isReady() && path.startsWith("/api") && path != "/api/health") {

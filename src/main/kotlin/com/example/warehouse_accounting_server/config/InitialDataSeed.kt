@@ -7,36 +7,15 @@ import com.example.warehouse_accounting_server.domain.repository.WarehouseReposi
 import com.example.warehouse_accounting_server.util.DateTimeProvider
 import com.example.warehouse_accounting_server.util.PasswordHasher
 
-/**
- * Идемпотентный сид критических данных, которые задаются вне легаси Flyway V8:
- * - учётная запись администратора (пароль только BCrypt);
- * - склад «Основной склад», если записи с таким именем ещё нет (страховка до/после миграций).
- *
- * Демо-категории, товары и остатки из коробки поставляет миграция V8 (легаси, с литеральными id — файл V8 не редактировать;
- * новые сиды — по естественным ключам, см. MIGRATIONS_NOTES.md в корне модуля Warehouse_accounting_server.
- *
- * **Пароль демо-администратора:** значение по умолчанию `admin123` — **только для локального сида**.
- * В production не используйте этот пароль; задайте `ADMIN_PASSWORD` в окружении или отключайте/не полагайтесь на этот сид.
- */
 object InitialDataSeed {
 
     const val MAIN_WAREHOUSE_NAME = "Основной склад"
 
     private const val ADMIN_EMAIL = "admin@warehouse.local"
 
-    /** Только для локальной разработки; переопределяется переменной окружения `ADMIN_PASSWORD`. */
     private fun localDemoAdminPassword(): String =
         System.getenv("ADMIN_PASSWORD")?.trim()?.takeIf { it.isNotEmpty() } ?: "admin123"
 
-    /**
-     * Создаёт начального администратора, если пользователь с таким email ещё не существует.
-     *
-     * Учётные данные по умолчанию:
-     *   email:    admin@warehouse.local
-     *   password: admin123
-     *   role:     ADMIN
-     *   status:   ACTIVE
-     */
     fun ensureAdmin(
         userRepository: UserRepository,
         passwordHasher: PasswordHasher,
@@ -53,11 +32,6 @@ object InitialDataSeed {
         )
     }
 
-    /**
-     * Создаёт основной склад, если он ещё не существует.
-     * Flyway V8 создаёт «Главный склад», V9 переименовывает его в «Основной склад».
-     * Этот метод — страховка на случай, если миграции не были применены.
-     */
     fun ensureMainWarehouse(
         warehouseRepository: WarehouseRepository,
         dateTime: DateTimeProvider,
